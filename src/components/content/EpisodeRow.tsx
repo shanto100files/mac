@@ -1,3 +1,4 @@
+import {getDownloadedVideoThumbnail} from '../../lib/downloadThumbnailCache';
 import React, {
   useCallback,
   useEffect,
@@ -78,6 +79,8 @@ interface EpisodeRowProps {
   title: string;
   description?: string;
   image?: string;
+  localFilePath?: string;
+  hideDownload?: boolean;
   progressPercent: number;
   watched: boolean;
   download?: DownloadItem;
@@ -96,9 +99,18 @@ interface EpisodeRowProps {
   onShowDetails?: () => void;
 }
 
-const EpisodeMedia: React.FC<{ image?: string }> = ({ image }) => {
-  const source =
-    image?.trim() && /^https?:\/\//i.test(image) ? image : undefined;
+const EpisodeMedia: React.FC<{ image?: string; localFilePath?: string }> = ({ image, localFilePath }) => {
+  const [localThumbnail, setLocalThumbnail] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setLocalThumbnail(null);
+    if (localFilePath) void getDownloadedVideoThumbnail(localFilePath).then(uri => {
+      if (active) setLocalThumbnail(uri);
+    });
+    return () => {active = false;};
+  }, [localFilePath]);
+  const source = localThumbnail || (
+    image?.trim() && /^https?:\/\//i.test(image) ? image : undefined);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => setFailed(false), [source]);
@@ -124,6 +136,8 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
   title,
   description,
   image,
+  localFilePath,
+  hideDownload = false,
   progressPercent,
   watched,
   download,
@@ -278,7 +292,7 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
         focusKey={`EPISODE_PLAY_${index}`}
       >
         {selecting && <span className="episode-selection-check">{selected ? <Check size={20} /> : <span />}</span>}
-        <EpisodeMedia image={image} />
+        <EpisodeMedia image={image} localFilePath={localFilePath} />
         <span className="episode-copy">
           <strong>{title}</strong>
           {episodeDescription && (
@@ -307,7 +321,7 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
         </span>
       </FocusableButton>
 
-      <div className="content-episode-download">
+      {!hideDownload && <div className="content-episode-download">
         {extracting ? (
           <span
             className="episode-action-static"
@@ -377,7 +391,7 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
             <Download size={18} />
           </FocusableButton>
         )}
-      </div>
+      </div>}
     </article>
   );
 };

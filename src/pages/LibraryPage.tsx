@@ -1,3 +1,7 @@
+import useLocalContentStore from '../lib/zustand/localContentStore';
+import {localLibraryItem} from '../lib/localContent/library';
+import {LocalContentDialog} from '../components/library/LocalContentDialog';
+import {LuFolderOpen} from 'react-icons/lu';
 import React, { useEffect, useMemo, useState } from "react";
 import {
   LuLibrary as LibraryGlyph,
@@ -29,7 +33,10 @@ type EditorState = { open: false } | { open: true; collection?: LibraryCollectio
 
 export const LibraryPage: React.FC = () => {
   const navigate = useNavigate();
-  const watchList = useWatchListStore((state) => state.watchList);
+  const remoteWatchList = useWatchListStore((state) => state.watchList);
+  const localTitles = useLocalContentStore(state => state.titles);
+  const watchList = useMemo(() => [...remoteWatchList, ...localTitles.filter(title => title.inLibrary !== false).map(localLibraryItem)], [remoteWatchList, localTitles]);
+  const [importOpen, setImportOpen] = useState(false);
   const collections = useWatchListStore((state) => state.collections);
   const removeItem = useWatchListStore((state) => state.removeItem);
   const removeFromCollection = useWatchListStore((state) => state.removeFromCollection);
@@ -115,6 +122,7 @@ export const LibraryPage: React.FC = () => {
           </p>
         </div>
         <div className="page-header-actions library-header-actions">
+          <FocusableButton className="library-action-button" onClick={() => setImportOpen(true)}><LuFolderOpen size={18} /> Import folder</FocusableButton>
           {editableCollection && (
             <FocusableButton
               focusKey="LIBRARY_EDIT_CATEGORY"
@@ -204,6 +212,7 @@ export const LibraryPage: React.FC = () => {
         </section>
       )}
 
+      <LocalContentDialog open={importOpen} onOpenChange={setImportOpen} collectionId={activeCollection?.id} />
       <LibraryCollectionDialog
         open={editor.open}
         collection={editor.open ? editor.collection : undefined}

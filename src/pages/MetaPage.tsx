@@ -1,3 +1,4 @@
+import {LocalSeasonList} from '../components/content/LocalSeasonList';
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -184,10 +185,10 @@ export const MetaPage: React.FC = () => {
   const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
   const { ref: focusRef, focusKey } = useFocusable({ focusable: tvMode, trackChildren: true });
 
-  const link = decodeURIComponent(url || "");
+  const link = url?.startsWith("vega-local:") ? url : decodeURIComponent(url || "");
   const activeProviderValue = searchParams.get("provider") || provider?.value || "";
   const episodeSortOrderKey = `${EPISODE_SORT_ORDER_KEY_PREFIX}:${activeProviderValue}:${link}`;
-  const { info, meta, isLoading, error, refetch } = useContentDetails(link, activeProviderValue);
+  const { info, meta, localTitle, isLoading, error, refetch } = useContentDetails(link, activeProviderValue);
   const [activeSeason, setActiveSeason] = useState<Link | null>(null);
   const [dialogStreams, setDialogStreams] = useState<Stream[]>([]);
   const [dialogEpisodeTitle, setDialogEpisodeTitle] = useState("");
@@ -288,7 +289,7 @@ export const MetaPage: React.FC = () => {
     : null;
   const paletteStyle = useArtworkPalette(paletteArtwork);
   const paletteReady = useArtworkPaletteReady(paletteArtwork);
-  const providerName =
+  const providerName = localTitle ? "Local content" :
     installedProviders.find((item) => item.value === activeProviderValue)?.display_name ||
     provider?.display_name ||
     activeProviderValue;
@@ -413,8 +414,9 @@ export const MetaPage: React.FC = () => {
     );
   }
 
-  const isInWatchList = watchList.some((item) => item.link === link);
+  const isInWatchList = localTitle ? localTitle.inLibrary !== false : watchList.some((item) => item.link === link);
   const toggleWatchList = () => {
+    if (localTitle) {setCollectionPickerOpen(true); return;}
     // With one category, save to it or remove directly. With none or several,
     // ask where to save.
     if (!onlyCollectionId) setCollectionPickerOpen(true);
@@ -811,7 +813,7 @@ export const MetaPage: React.FC = () => {
             />
           )}
 
-          <section className="content-episodes-section" aria-label="Available links">
+          {localTitle ? <LocalSeasonList title={localTitle} themeStyle={paletteStyle} /> : <section className="content-episodes-section" aria-label="Available links">
             {/* Without the search field, the sort button sits beside the season picker. */}
             <div className="season-row">
               <SeasonSelector
@@ -942,7 +944,7 @@ export const MetaPage: React.FC = () => {
             ) : (
               <div className="episodes-inline-state"><span>No playable links are available for this selection.</span></div>
             )}
-          </section>
+          </section>}
         </div>
 
         <DownloadServerDialog

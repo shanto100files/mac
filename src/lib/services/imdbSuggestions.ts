@@ -2,6 +2,8 @@ export interface IMDbSuggestion {
   title: string;
   type: 'movie' | 'tv';
   year?: number;
+  imdbId?: string;
+  poster?: string;
 }
 
 export const fetchIMDbSuggestions = async (
@@ -37,7 +39,7 @@ export const fetchIMDbSuggestions = async (
       const title = item?.l?.trim();
       if (!title) continue;
 
-      const normalizedTitle = title.toLowerCase();
+      const normalizedTitle = item?.id || title.toLowerCase();
       if (seenTitles.has(normalizedTitle)) continue;
       seenTitles.add(normalizedTitle);
 
@@ -54,6 +56,8 @@ export const fetchIMDbSuggestions = async (
         title,
         type: isTv ? 'tv' : 'movie',
         year: item?.y,
+        imdbId: /^tt\d+$/.test(item?.id || '') ? item.id : undefined,
+        poster: item?.i?.imageUrl,
       });
     }
 

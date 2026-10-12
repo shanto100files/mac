@@ -75,7 +75,7 @@ export const FocusableButton: React.FC<FocusableButtonProps> = ({
       {...rest as any}
       // @ts-ignore
       ref={ref}
-      role="button"
+      role={rest.role || "button"}
       aria-disabled={disabled || undefined}
       tabIndex={disabled || tvMode || !isControlsVisible ? -1 : (tabIndex ?? 0)}
       className={`${className} ${focused && isAllowedMode && isControlsVisible && showRing ? 'tv-focus' : ''}`.trim()}

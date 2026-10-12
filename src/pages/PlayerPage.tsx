@@ -58,6 +58,7 @@ interface PlayerLocationState {
   providerValue: string;
   infoUrl: string;
   doNotTrack?: boolean;
+  localContent?: boolean;
 }
 
 interface MediaTrackPreference {
@@ -285,6 +286,7 @@ export const PlayerPage: React.FC = () => {
 
   useEffect(() => {
     let mounted = true;
+    if (state?.localContent) { setSyncReady(true); return; }
     syncFromSharedFolder()
       .catch((error) => console.warn("[VegaSync] Player sync failed:", error))
       .finally(() => {
@@ -345,6 +347,7 @@ const PlayerInner: React.FC<PlayerInnerProps> = ({ state }) => {
       providerValue: state.providerValue,
       infoUrl: state.infoUrl,
       doNotTrack: state.doNotTrack,
+      localContent: state.localContent,
       poster: state.poster,
     }),
     [state, activeEpisodeIndex],
@@ -796,6 +799,7 @@ const DesktopPlayer: React.FC<any> = ({
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimerRef = useRef<number | null>(null);
   const controlsTimerRef = useRef<number | null>(null);
+  const playerMenuOpenRef = useRef(false);
   const isScrubbingRef = useRef(false);
   const prevStreamLinkRef = useRef<string | null>(null);
   const appliedAudioForStreamRef = useRef<string | null>(null);
@@ -1522,6 +1526,7 @@ const DesktopPlayer: React.FC<any> = ({
       !showShortcuts &&
       !showEpisodeSidebar &&
       !isScrubbingRef.current &&
+      !playerMenuOpenRef.current &&
       !mpv.playbackError
     ) {
       setShowControls(false);
@@ -1529,7 +1534,8 @@ const DesktopPlayer: React.FC<any> = ({
   }, [showShortcuts, showEpisodeSidebar, mpv.playbackError]);
   const scheduleHide = useCallback(() => {
     if (controlsTimerRef.current) clearTimeout(controlsTimerRef.current);
-    if (mpv.playbackError) return;
+    controlsTimerRef.current = null;
+    if (mpv.playbackError || playerMenuOpenRef.current) return;
     controlsTimerRef.current = window.setTimeout(hideControls, 3500);
   }, [hideControls, mpv.playbackError]);
 
@@ -1571,6 +1577,16 @@ const DesktopPlayer: React.FC<any> = ({
   useEffect(() => {
     if (showControls) scheduleHide();
   }, [showControls, scheduleHide]);
+
+  const handleMenuOpenChange = useCallback((open: boolean) => {
+    playerMenuOpenRef.current = open;
+    if (controlsTimerRef.current) {
+      clearTimeout(controlsTimerRef.current);
+      controlsTimerRef.current = null;
+    }
+    if (open) setShowControls(true);
+    else scheduleHide();
+  }, [scheduleHide]);
 
   const handleMouseMove = useCallback(() => revealControls(), [revealControls]);
   const handleBackgroundClick = useCallback(() => {
@@ -2292,6 +2308,7 @@ const DesktopPlayer: React.FC<any> = ({
       <ControlsFocusProvider visible={showControls && !showEpisodeSidebar}>
         <PlayerControls
           visible={showControls}
+          onMenuOpenChange={handleMenuOpenChange}
           isPaused={mpv.isPaused}
           isBuffering={mpv.isBuffering}
           currentTime={mpv.currentTime}

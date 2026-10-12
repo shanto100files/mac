@@ -5,6 +5,7 @@ mod cookie_manager;
 mod doh_client;
 mod download_manager;
 mod ffmpeg_resolver;
+mod local_content;
 mod media_probe;
 mod parallel_download;
 pub mod proxy_manager;
@@ -794,6 +795,7 @@ pub fn run() {
             get_stream_proxy_port,
             get_local_stream_url,
             generate_video_thumbnail,
+            local_content::list_local_directory,
             get_torrent_api_port,
             download_manager::start_download,
             download_manager::pause_download,

@@ -197,6 +197,7 @@ export const useStream = ({
       const localStream = localFilePath
         ? await loadLocalStream(localFilePath, downloadedItem?.baseDir, downloadedSubs)
         : null;
+      if (routeParams?.localContent) return localStream ? [localStream] : [];
       const remoteLink = activeEpisode?.localFile
         ? activeEpisode.sourceLink || downloadedItem?.sourceLink
         : activeEpisode.link;

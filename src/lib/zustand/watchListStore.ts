@@ -1,3 +1,5 @@
+import useLocalContentStore from './localContentStore';
+import {localContentId, localLibraryItem} from '../localContent/library';
 import {create} from 'zustand';
 import {watchListStorage, WatchListItem} from '../storage';
 import {
@@ -33,23 +35,37 @@ const useWatchListStore = create<WatchListStore>()((set, get) => ({
 
   // Remove item using storage service
   removeItem: link => {
+    const localId = localContentId(link);
+    if (localId) { useLocalContentStore.getState().hideFromLibrary(localId); return; }
     const newWatchList = watchListStorage.removeFromWatchList(link);
     set({watchList: newWatchList});
   },
 
   // Add item using storage service
   addItem: item => {
+    const localId = localContentId(item.link);
+    if (localId) {
+      useLocalContentStore.getState().setCollections(localId, item.collections?.length ? item.collections : get().collections.slice(0, 1).map(c => c.id));
+      return;
+    }
     const newWatchList = watchListStorage.addToWatchList(item);
     set({watchList: newWatchList});
   },
 
   setItemCollections: (item, ids) => {
+    const localId = localContentId(item.link);
+    if (localId) { useLocalContentStore.getState().setCollections(localId, ids); return; }
     set({watchList: watchListStorage.setItemCollections(item, ids)});
   },
 
   removeFromCollection: (links, collectionId) => {
     const existingIds = new Set(get().collections.map(c => c.id));
     const targets = new Set(links);
+    for (const title of useLocalContentStore.getState().titles) {
+      if (targets.has(localLibraryItem(title).link)) {
+        useLocalContentStore.getState().setCollections(title.id, getItemCollectionIds(localLibraryItem(title), existingIds).filter(id => id !== collectionId));
+      }
+    }
     let watchList = watchListStorage.getWatchList();
     for (const item of watchList) {
       if (!targets.has(item.link)) {

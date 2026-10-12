@@ -1,3 +1,5 @@
+import useLocalContentStore from '../../lib/zustand/localContentStore';
+import {localContentId, localLibraryItem} from '../../lib/localContent/library';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   doesFocusableExist,
@@ -65,6 +67,7 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
   restoreFocusKey,
 }) => {
   const watchList = useWatchListStore((state) => state.watchList);
+  const localTitles = useLocalContentStore(state => state.titles);
   const collections = useWatchListStore((state) => state.collections);
   const setItemCollections = useWatchListStore((state) => state.setItemCollections);
   const createCollection = useWatchListStore((state) => state.createCollection);
@@ -131,9 +134,10 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
     () => new Set(collections.map((c) => c.id)),
     [collections],
   );
-  const savedItem = item
-    ? watchList.find((saved) => saved.link === item.link)
-    : undefined;
+  const localTitle = localTitles.find(title => title.id === localContentId(item?.link || ''));
+  const savedItem = localTitle
+    ? localTitle.inLibrary !== false ? localLibraryItem(localTitle) : undefined
+    : item ? watchList.find((saved) => saved.link === item.link) : undefined;
   const selectedIds = savedItem ? getItemCollectionIds(savedItem, existingIds) : [];
 
   const close = () => onOpenChange(false);

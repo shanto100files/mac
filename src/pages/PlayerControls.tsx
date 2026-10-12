@@ -104,6 +104,7 @@ interface PlayerControlsProps {
   onToggleShortcuts?: () => void;
   onRequestThumbnail?: (time: number) => Promise<string | null>;
   thumbnailKey?: string;
+  onMenuOpenChange?: (open: boolean) => void;
   onScrubbingChange?: (scrubbing: boolean) => void;
   isTV?: boolean;
 }
@@ -202,6 +203,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onRequestThumbnail,
   thumbnailKey,
   onScrubbingChange,
+  onMenuOpenChange,
 }) => {
   const isAndroid =
     typeof navigator !== "undefined" &&
@@ -257,6 +259,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   const pendingSeekTimerRef = useRef<number | null>(null);
   const showSeekButtons = !settingsStorage.hideSeekButtons();
 
+  const hasOpenMenu = Boolean(openMenu || showOnlineSearch);
+  useEffect(() => {
+    onMenuOpenChange?.(hasOpenMenu);
+  }, [hasOpenMenu, onMenuOpenChange]);
+
+  useEffect(() => () => onMenuOpenChange?.(false), [onMenuOpenChange]);
+
+
   // Focus play button when controls become visible in TV mode
   useEffect(() => {
     if (visible && tvMode) {
@@ -264,7 +274,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         focusSelf();
       }, 50);
       return () => clearTimeout(timer);
-    } else {
+    } else if (!visible) {
       setOpenMenu(null);
     }
   }, [visible, tvMode, focusSelf]);

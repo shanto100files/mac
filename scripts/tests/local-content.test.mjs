@@ -1,0 +1,257 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { readFileSync, existsSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { runInThisContext } from "node:vm";
+import ts from "typescript";
+
+const require = createRequire(import.meta.url);
+const root = fileURLToPath(new URL("../../src/lib/", import.meta.url));
+function fixture() {
+  const values = new Map();
+  const storage = {
+    getArray: (key) => structuredClone(values.get(key)),
+    setArray: (key, value) => values.set(key, structuredClone(value)),
+    getBool: (key) => values.get(key) || false,
+    setBool: (key, value) => values.set(key, value),
+    getString: (key) => values.get(key),
+    setString: (key, value) => values.set(key, value),
+    delete: (key) => values.delete(key),
+  };
+  const cache = new Map();
+  const mocks = new Map([
+    [resolve(root, "storage/StorageService.ts"), { mainStorage: storage }],
+  ]);
+  function load(filename) {
+    if (mocks.has(filename)) return mocks.get(filename);
+    if (cache.has(filename)) return cache.get(filename).exports;
+    const module = { exports: {} };
+    cache.set(filename, module);
+    const { outputText } = ts.transpileModule(readFileSync(filename, "utf8"), {
+      compilerOptions: {
+        module: ts.ModuleKind.CommonJS,
+        target: ts.ScriptTarget.ES2020,
+      },
+    });
+    const execute = runInThisContext(
+      `(function(require,module,exports){\n${outputText}\n})`,
+      { filename },
+    );
+    execute(
+      (specifier) => {
+        if (!specifier.startsWith(".")) return require(specifier);
+        const target = resolve(dirname(filename), specifier);
+        return load(
+          existsSync(`${target}.ts`)
+            ? `${target}.ts`
+            : resolve(target, "index.ts"),
+        );
+      },
+      module,
+      module.exports,
+    );
+    return module.exports;
+  }
+  const { watchListStorage } = load(
+    resolve(root, "storage/WatchListStorage.ts"),
+  );
+  mocks.set(resolve(root, "storage/index.ts"), {
+    mainStorage: storage,
+    watchListStorage,
+  });
+  return {
+    model: load(resolve(root, "localContent/model.ts")),
+    library: load(resolve(root, "localContent/library.ts")),
+    local: load(resolve(root, "zustand/localContentStore.ts")).default,
+    watchlist: load(resolve(root, "zustand/watchListStore.ts")).default,
+    values,
+  };
+}
+const file = (uri, name) => ({ uri, name, directory: false });
+const dir = (uri, name) => ({ uri, name, directory: true });
+const tree = {
+  root: [
+    dir("series", "Series"),
+    dir("movie", "Movie"),
+    file("loose", "Loose.mp4"),
+  ],
+  series: [dir("season", "Season 01"), file("pilot", "Pilot.mp4")],
+  season: [
+    file("ep10", "Show.S01E10.mkv"),
+    file("ep2", "Show.S01E02.mkv"),
+    file("sub", "Show.srt"),
+  ],
+  movie: [file("moviefile", "Movie.2024.1080p.mkv")],
+};
+const list = async (uri) => tree[uri] || [];
+const localTitle = {
+  id: "C:\\Media\\Show",
+  rootUri: "C:\\Media",
+  folderUri: "C:\\Media\\Show",
+  name: "Show",
+  episodes: [
+    {
+      uri: "C:\\Media\\Show\\S01E02.mkv",
+      name: "S01E02.mkv",
+      folder: "Season 01",
+      season: 1,
+      episode: 2,
+    },
+  ],
+  useMetadataTitles: true,
+  collections: ["watchlist"],
+  inLibrary: true,
+  metadata: {
+    imdbId: "tt123",
+    type: "series",
+    title: "Matched show",
+    videos: [{ season: 1, episode: 2, title: "Second episode" }],
+  },
+};
+
+test("bulk import separates series, movies and root videos without duplicates", async () => {
+  const { model } = fixture();
+  const titles = await model.prepareLocalImport(
+    { uri: "root", name: "Media" },
+    true,
+    list,
+    [],
+  );
+  assert.equal(titles.length, 3);
+  assert.deepEqual(
+    titles[0].episodes.map((item) => item.uri),
+    ["loose"],
+  );
+  assert.equal(titles[0].rootFilesOnly, true);
+  const show = titles.find((item) => item.folderUri === "series");
+  assert.deepEqual(
+    show.episodes.map((item) => [item.uri, item.folder]),
+    [
+      ["pilot", "Default"],
+      ["ep2", "Season 01"],
+      ["ep10", "Season 01"],
+    ],
+  );
+});
+test("single series recursively includes its seasons in one title", async () => {
+  const { model } = fixture();
+  const titles = await model.prepareLocalImport(
+    { uri: "series", name: "Show" },
+    false,
+    list,
+    [],
+  );
+  assert.equal(titles.length, 1);
+  assert.equal(titles[0].episodes.length, 3);
+  assert.deepEqual(model.parseEpisodeName("Movie.2024.1080p.mkv"), {
+    season: undefined,
+    episode: undefined,
+  });
+});
+test("episode names match season and episode; unmatched files retain filenames", () => {
+  const { model } = fixture();
+  const episode = localTitle.episodes[0];
+  assert.equal(
+    model.getEpisodeLabel(episode, localTitle),
+    "S1 E2 · Second episode",
+  );
+  assert.equal(
+    model.getEpisodeLabel({ ...episode, episode: 3 }, localTitle),
+    episode.name,
+  );
+  assert.equal(
+    model.getEpisodeLabel(episode, { ...localTitle, useMetadataTitles: false }),
+    episode.name,
+  );
+  assert.equal(
+    model.getEpisodeLabel(episode, {
+      ...localTitle,
+      metadata: { ...localTitle.metadata, type: "movie" },
+    }),
+    "Movie",
+  );
+});
+test("reimport preserves metadata, categories and naming preference", async () => {
+  const { model } = fixture();
+  const previous = {
+    ...localTitle,
+    folderUri: "series",
+    useMetadataTitles: false,
+  };
+  const [imported] = await model.prepareLocalImport(
+    { uri: "series", name: "Show" },
+    false,
+    list,
+    [previous],
+  );
+  assert.deepEqual(imported.metadata, previous.metadata);
+  assert.deepEqual(imported.collections, previous.collections);
+  assert.equal(imported.useMetadataTitles, false);
+});
+test("cancelled and inaccessible scans reject without producing partial imports", async () => {
+  const { model } = fixture();
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    model.scanEpisodes("root", list, controller.signal),
+    /cancelled/i,
+  );
+  await assert.rejects(
+    model.prepareLocalImport(
+      { uri: "root", name: "Media" },
+      true,
+      async (uri) => {
+        if (uri === "season") throw new Error("Permission denied");
+        return list(uri);
+      },
+      [],
+    ),
+    /Permission denied/,
+  );
+});
+test("local Library changes persist separately without changing the synced watchlist", () => {
+  const { local, watchlist, library, values } = fixture();
+  const remote = {
+    title: "Remote",
+    link: "https://provider/movie",
+    poster: "",
+    provider: "provider",
+  };
+  watchlist.getState().addItem(remote);
+  const synced = structuredClone(values.get("watchlist"));
+  local.getState().saveTitles([localTitle]);
+  watchlist
+    .getState()
+    .setItemCollections(library.localLibraryItem(localTitle), ["movies"]);
+  assert.deepEqual(local.getState().titles[0].collections, ["movies"]);
+  assert.deepEqual(values.get("watchlist"), synced);
+  assert.deepEqual(watchlist.getState().watchList, synced);
+  assert.equal(values.get("device-local-content-v1")[0].id, localTitle.id);
+  watchlist.getState().removeItem(library.localContentLink(localTitle.id));
+  assert.equal(local.getState().titles[0].inLibrary, false);
+  assert.equal(local.getState().titles[0].episodes.length, 1);
+  assert.deepEqual(values.get("watchlist"), synced);
+});
+test("category removal hides local titles only when no categories remain", () => {
+  const { local, watchlist, library } = fixture();
+  const other = watchlist
+    .getState()
+    .createCollection({ name: "Movies", icon: "movie", color: "#ff0000" });
+  local
+    .getState()
+    .saveTitles([{ ...localTitle, collections: ["watchlist", other.id] }]);
+  const link = library.localContentLink(localTitle.id);
+  watchlist.getState().removeFromCollection([link], "watchlist");
+  assert.deepEqual(local.getState().titles[0].collections, [other.id]);
+  assert.equal(local.getState().titles[0].inLibrary, true);
+  watchlist.getState().removeFromCollection([link], other.id);
+  assert.equal(local.getState().titles[0].inLibrary, false);
+});
+test("local links preserve spaces, percent signs, Unicode and Windows separators", () => {
+  const { library } = fixture();
+  const path = "C:\\Media\\100% Movie\\日本語";
+  assert.equal(library.localContentId(library.localContentLink(path)), path);
+  assert.equal(library.localContentId("https://provider/movie"), undefined);
+});

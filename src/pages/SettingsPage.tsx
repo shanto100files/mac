@@ -24,6 +24,7 @@ import {
 } from "../lib/logging/vegaLog";
 import { toast } from "../lib/zustand/toastStore";
 
+import {exportBackup, pickBackup, restoreBackup} from "../lib/backup";
 import "./SettingsPage.css";
 
 export const SettingsPage: React.FC = () => {
@@ -39,6 +40,28 @@ export const SettingsPage: React.FC = () => {
     isDetailedLoggingEnabled,
   );
   const [exportingLogs, setExportingLogs] = React.useState(false);
+
+  const [backupBusy, setBackupBusy] = React.useState(false);
+  const handleBackup = async (action: "export" | "import") => {
+    if (backupBusy) return;
+    setBackupBusy(true);
+    try {
+      if (action === "export") {
+        if (await exportBackup()) toast("Backup exported");
+      } else {
+        const backup = await pickBackup();
+        if (!backup) return;
+        const {ask} = await import("@tauri-apps/plugin-dialog");
+        if (!await ask("This replaces your settings and installed providers, and your library if included. Vega will reload after restoring.", {title: "Restore backup?", kind: "warning"})) return;
+        restoreBackup(backup);
+        window.location.reload();
+      }
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not process backup");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   const handleExportLogs = async () => {
     setExportingLogs(true);
@@ -249,6 +272,15 @@ export const SettingsPage: React.FC = () => {
               >
                 {exportingLogs ? "Exporting..." : "Export"}
               </FocusableButton>
+            </div>
+            <div className="settings-divider" />
+            <div className="settings-row">
+              <div className="settings-info">
+                <h3 className="label-lg">Backup</h3>
+                <p className="body-md text-muted">Export or restore settings, providers and library.</p>
+              </div>
+              <FocusableButton className="theme-toggle-btn active" disabled={backupBusy} onClick={() => void handleBackup("export")}>Export</FocusableButton>
+              <FocusableButton className="theme-toggle-btn active" disabled={backupBusy} onClick={() => void handleBackup("import")}>Import</FocusableButton>
             </div>
             <div className="settings-divider" />
             <div className="github-star-row">
