@@ -788,23 +788,40 @@ async fn handle_proxy(
         .unwrap_or("")
         .to_string();
 
-    if !content_type.contains("mpegurl")
-        && !content_type.contains("m3u8")
-        && !content_type.contains("application/x-mpegURL")
-    {
-        // The CDN returned a direct video stream (e.g. MP4) instead of a playlist!
-        let stream = response.bytes_stream();
-        let body = axum::body::Body::from_stream(stream);
-        return Ok(axum::response::Response::builder()
-            .header(axum::http::header::CONTENT_TYPE, content_type)
-            .body(body)
-            .unwrap());
+    // Some HLS hosts disguise playlists as images or HTML. Inspect the body
+    // before deciding whether to rewrite URLs; MIME alone is not reliable.
+    let status = response.status();
+    let upstream_headers = response.headers().clone();
+    let mut upstream = response.bytes_stream();
+    let mut prefix = Vec::new();
+    while prefix.len() < 1024 {
+        match upstream.next().await {
+            Some(Ok(chunk)) => prefix.extend_from_slice(&chunk),
+            Some(Err(error)) => {
+                vlog_warn!("[stream_proxy] Failed to read playlist prefix: {}", error);
+                return Err(StatusCode::BAD_GATEWAY);
+            }
+            None => break,
+        }
+        if !crate::hls_playlist::needs_more_prefix(&prefix) { break; }
     }
-
-    let text = response.text().await.map_err(|e| {
-        vlog_warn!("[stream_proxy] Failed to read playlist body: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    if !crate::hls_playlist::is_playlist(&prefix) {
+        // Replay the inspected bytes and stream a genuine video response.
+        let body = stream::once(async move { Ok::<_, reqwest::Error>(Bytes::from(prefix)) }).chain(upstream);
+        let mut builder = Response::builder().status(status).header(header::CONTENT_TYPE, content_type);
+        for name in [header::CONTENT_LENGTH, header::CONTENT_RANGE, header::ACCEPT_RANGES] {
+            if let Some(value) = upstream_headers.get(&name) { builder = builder.header(name, value); }
+        }
+        return builder.body(Body::from_stream(body)).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    while let Some(chunk) = upstream.next().await {
+        prefix.extend_from_slice(&chunk.map_err(|error| {
+            vlog_warn!("[stream_proxy] Failed to read playlist body: {}", error);
+            StatusCode::BAD_GATEWAY
+        })?);
+    }
+    let text = String::from_utf8(prefix).map_err(|_| StatusCode::BAD_GATEWAY)?;
+    let text = text.trim_start_matches('\u{feff}').trim_start();
 
     let is_master = text.contains("#EXT-X-STREAM-INF");
 

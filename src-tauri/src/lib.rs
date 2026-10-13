@@ -1,3 +1,4 @@
+mod hls_playlist;
 #[macro_use]
 mod app_log;
 mod byedpi_relay;
