@@ -1,3 +1,5 @@
+import {pumpMseStream} from "./mseBufferPump";
+import {modernMseMime} from "./mseCodec";
 import { invoke } from "@tauri-apps/api/core";
 import Hls from "hls.js";
 import type {
@@ -104,14 +106,17 @@ const SUBTITLE_PREFETCH_SECONDS = 30;
 /** Cues per rolling window fetch. */
 const SUBTITLE_ROLLING_CUES = 60;
 
-function resolveMseMimeType(videoCodec: string, hasAudio: boolean): string | null {
+function resolveMseMimeType(videoCodec: string, hasAudio: boolean, profile?: string, bitDepth?: number): string | null {
   if (typeof window === "undefined" || !window.MediaSource) return null;
   const v = videoCodec.toLowerCase();
   const isHevc = v.includes("hevc") || v.includes("h265");
   const isH264 = v.includes("h264") || v.includes("avc");
 
   const candidates: string[] = [];
-  if (isHevc) {
+  const modern = modernMseMime(videoCodec, hasAudio, profile, bitDepth);
+  if (modern) {
+    candidates.push(modern);
+  } else if (isHevc) {
     if (hasAudio) {
       candidates.push(
         'video/mp4; codecs="hvc1, mp4a.40.2"',
@@ -164,7 +169,7 @@ function resolveMseMimeType(videoCodec: string, hasAudio: boolean): string | nul
   return null;
 }
 
-function isVideoCodecSupported(codecName?: string): boolean {
+function isVideoCodecSupported(codecName?: string, profile?: string, bitDepth?: number): boolean {
   if (!codecName || typeof document === "undefined") return false;
   const name = codecName.toLowerCase();
   const video = document.createElement("video");
@@ -200,10 +205,10 @@ function isVideoCodecSupported(codecName?: string): boolean {
       );
     }
     if (name.includes("av1") || name.includes("av01")) {
-      return canPlay('video/mp4; codecs="av01.0.08M.08"');
+      return canPlay(modernMseMime(name, false, profile, bitDepth)!);
     }
     if (name.includes("vp9")) {
-      return canPlay('video/mp4; codecs="vp09.00.10.08"');
+      return canPlay(modernMseMime(name, false, profile, bitDepth)!);
     }
   } catch {
     return false;
@@ -249,6 +254,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   private virtualTimeOffset: number = 0;
   private probedDuration: number = 0;
   private isDestroyed: boolean = false;
+  private videoEventController = new AbortController();
   private externalSubtitles: { url?: string; uri?: string; language?: string; title?: string }[] = [];
   private audioDelay: number = 0;
   private audioDelayDebounceTimer: any = null;
@@ -681,12 +687,15 @@ export class HtmlVideoEngine implements PlayerEngine {
 
   private attachVideoListeners(): void {
     const v = this.video;
+    const on = (type: string, handler: () => void) => {
+      v.addEventListener(type, handler, {signal: this.videoEventController.signal});
+    };
 
-    v.addEventListener("play", () => {
+    on("play", () => {
       this.updateState({ isPaused: false });
     });
 
-    v.addEventListener("pause", () => {
+    on("pause", () => {
       this.updateState({
         isPaused: true,
         isBuffering: this.isSeeking || this.isPreparingRemuxPreroll,
@@ -704,7 +713,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       this.isSeeking = false;
     };
 
-    v.addEventListener("timeupdate", () => {
+    on("timeupdate", () => {
       if (this.isSeeking) {
         return;
       }
@@ -720,20 +729,20 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("durationchange", () => {
+    on("durationchange", () => {
       if (!this.probedDuration && v.duration) {
         this.updateState({ duration: v.duration });
       }
     });
 
-    v.addEventListener("waiting", () => {
+    on("waiting", () => {
       this.updateState({ isBuffering: true });
       if (this.jassub) {
         this.jassub.setBuffering(true);
       }
     });
 
-    v.addEventListener("playing", () => {
+    on("playing", () => {
       this.applyPlaybackSpeed();
       if (this.isPreparingRemuxPreroll) {
         this.updateState({ isBuffering: true, isPaused: false });
@@ -750,7 +759,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("canplay", () => {
+    on("canplay", () => {
       this.applyPlaybackSpeed();
       if (this.isPreparingRemuxPreroll) return;
       this.releaseFreezeFrame();
@@ -764,7 +773,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("canplaythrough", () => {
+    on("canplaythrough", () => {
       this.applyPlaybackSpeed();
       if (this.isPreparingRemuxPreroll) return;
       if (v.paused) {
@@ -775,7 +784,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("loadeddata", () => {
+    on("loadeddata", () => {
       this.applyPlaybackSpeed();
       if (this.isPreparingRemuxPreroll) return;
       this.releaseFreezeFrame();
@@ -785,11 +794,11 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("seeking", () => {
+    on("seeking", () => {
       this.updateState({ isBuffering: true });
     });
 
-    v.addEventListener("seeked", () => {
+    on("seeked", () => {
       this.applyPlaybackSpeed();
       finishSeeking();
       this.updateState({ isBuffering: false });
@@ -799,7 +808,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("progress", () => {
+    on("progress", () => {
       if (v.buffered.length > 0) {
         const bufferedEnd = v.buffered.end(v.buffered.length - 1);
         const cacheDur = Math.max(0, bufferedEnd - v.currentTime);
@@ -807,11 +816,11 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("volumechange", () => {
+    on("volumechange", () => {
       this.updateState({ volume: Math.round(v.volume * 100) });
     });
 
-    v.addEventListener("ratechange", () => {
+    on("ratechange", () => {
       if (
         !this.isDestroyed &&
         this.playbackSpeed > 0 &&
@@ -824,7 +833,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       this.updateState({ speed: v.playbackRate });
     });
 
-    v.addEventListener("loadedmetadata", () => {
+    on("loadedmetadata", () => {
       this.applyPlaybackSpeed();
       this.updateState({
         videoHeight: v.videoHeight,
@@ -888,7 +897,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
     });
 
-    v.addEventListener("error", () => {
+    on("error", () => {
       this.releaseFreezeFrame();
       const err = v.error;
       const msg = err ? `Video error code ${err.code}: ${err.message}` : "Playback error";
@@ -1031,8 +1040,6 @@ export class HtmlVideoEngine implements PlayerEngine {
       session.abortController.abort();
       if (session.sourceBuffer) {
         try {
-          session.sourceBuffer.onupdateend = null;
-          session.sourceBuffer.onerror = null;
           if (session.sourceBuffer.updating) {
             session.sourceBuffer.abort();
           }
@@ -1040,8 +1047,14 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
       if (session.mediaSource.readyState === "open") {
         try {
+          if (session.sourceBuffer) session.mediaSource.removeSourceBuffer(session.sourceBuffer);
           session.mediaSource.endOfStream();
         } catch {}
+      }
+      if (this.video.getAttribute('src') === session.objectUrl) {
+        this.video.pause();
+        this.video.removeAttribute('src');
+        this.video.load();
       }
       try {
         URL.revokeObjectURL(session.objectUrl);
@@ -1126,7 +1139,7 @@ export class HtmlVideoEngine implements PlayerEngine {
     const vCodec = isTranscode ? "h264" : (selectedVideo?.codec || "h264");
 
     const mimeType =
-      resolveMseMimeType(vCodec, hasAudio) ||
+      resolveMseMimeType(vCodec, hasAudio, isTranscode ? undefined : selectedVideo?.codecProfile, isTranscode ? undefined : selectedVideo?.codecBitDepth) ||
       (hasAudio
         ? 'video/mp4; codecs="avc1.640028, mp4a.40.2"'
         : 'video/mp4; codecs="avc1.640028"');
@@ -1135,99 +1148,25 @@ export class HtmlVideoEngine implements PlayerEngine {
     sourceBuffer.mode = "segments";
     session.sourceBuffer = sourceBuffer;
 
-    const queue: Uint8Array[] = [];
-    let isAppending = false;
-
-    const processQueue = () => {
-      if (
-        isAppending ||
-        queue.length === 0 ||
-        !this.mseSession ||
-        this.mseSession.generation !== generation ||
-        mediaSource.readyState !== "open" ||
-        sourceBuffer.updating
-      ) {
-        return;
-      }
-
-      const chunk = queue.shift();
-      if (!chunk) return;
-
-      isAppending = true;
-      try {
-        sourceBuffer.appendBuffer(chunk as unknown as BufferSource);
-      } catch (err: any) {
-        isAppending = false;
-        if (err?.name === "QuotaExceededError") {
-          const removeEnd = Math.max(0, this.video.currentTime - 15);
-          if (removeEnd > 0 && !sourceBuffer.updating) {
-            try {
-              sourceBuffer.remove(0, removeEnd);
-            } catch {}
-            queue.unshift(chunk);
-          } else {
-            queue.unshift(chunk);
-            setTimeout(() => {
-              if (this.streamGeneration === generation) processQueue();
-            }, 1000);
-          }
-        } else {
-          console.warn("[HtmlVideoEngine] SourceBuffer appendBuffer error:", err);
-        }
-      }
-    };
-
-    sourceBuffer.addEventListener("updateend", () => {
-      isAppending = false;
-      processQueue();
-    });
-
-    sourceBuffer.addEventListener("error", (e) => {
-      console.warn("[HtmlVideoEngine] SourceBuffer error:", e);
-    });
-
+    const lowEnd = isLowEndDevice();
     void (async () => {
       try {
         const response = await fetch(streamUrl, {
           signal: abortController.signal,
           cache: "no-store",
         });
-        if (!response.ok || !response.body) {
-          throw new Error(`Stream HTTP ${response.status}`);
-        }
-        const reader = response.body.getReader();
-
-        while (
-          !this.isDestroyed &&
-          this.streamGeneration === generation &&
-          !abortController.signal.aborted
-        ) {
-          const { done, value } = await reader.read();
-          if (done) {
-            if (
-              mediaSource.readyState === "open" &&
-              !sourceBuffer.updating &&
-              queue.length === 0
-            ) {
-              try {
-                mediaSource.endOfStream();
-              } catch {}
-            }
-            break;
-          }
-          if (value && value.byteLength > 0) {
-            queue.push(value);
-            processQueue();
-          }
-        }
+        if (!response.ok || !response.body) throw new Error(`Stream HTTP ${response.status}`);
+        await pumpMseStream({
+          reader: response.body.getReader(), buffer: sourceBuffer,
+          mediaSource, video: this.video, signal: abortController.signal,
+          limits: {aheadSeconds: lowEnd ? 15 : 30, behindSeconds: lowEnd ? 5 : 10,
+            maxBytes: (lowEnd ? 32 : 64) * 1024 * 1024},
+        });
       } catch (err: any) {
-        if (
-          abortController.signal.aborted ||
-          String(err?.message || err).includes("aborted")
-        ) {
-          return;
-        }
-        console.warn("[HtmlVideoEngine] MSE fetch error:", err);
+        if (abortController.signal.aborted || this.mseSession !== session) return;
+        console.warn("[HtmlVideoEngine] MSE stream error:", err);
+        this.updateState({error: err?.message || 'Stream buffering failed', isBuffering: false});
+        this.cleanupMse();
       }
     })();
   }
@@ -1382,6 +1321,8 @@ export class HtmlVideoEngine implements PlayerEngine {
           title: vt.title || `${vt.width || 0}x${vt.height || 0}`,
           lang: vt.language || "",
           codec: vt.codec_name || "",
+          codecProfile: vt.profile,
+          codecBitDepth: vt.bit_depth,
           selected: vt.index === 0,
           external: false,
           demuxW: vt.width,
@@ -1472,7 +1413,9 @@ export class HtmlVideoEngine implements PlayerEngine {
           this.selectedAudioIndex = defaultAudio.id;
         }
 
-        const videoSupported = isVideoCodecSupported(primaryVideo?.codec_name);
+        const videoSupported = isVideoCodecSupported(primaryVideo?.codec_name, primaryVideo?.profile, primaryVideo?.bit_depth) &&
+          (!modernMseMime(primaryVideo?.codec_name || '', audioTracks.length > 0, primaryVideo?.profile, primaryVideo?.bit_depth) ||
+            Boolean(resolveMseMimeType(primaryVideo?.codec_name || '', audioTracks.length > 0, primaryVideo?.profile, primaryVideo?.bit_depth)));
         const audioSupported = defaultAudio
           ? WEB_FRIENDLY_AUDIO_CODECS.has(defaultAudio.codec.toLowerCase())
           : true;
@@ -1591,6 +1534,7 @@ export class HtmlVideoEngine implements PlayerEngine {
         return;
       }
       if (this.usesRemuxClock) {
+        this.cleanupMse();
         const message = err?.message || "Failed to prepare remux stream";
         this.updateState({ error: message, isBuffering: false, isPaused: true });
         throw err;
@@ -2675,8 +2619,10 @@ export class HtmlVideoEngine implements PlayerEngine {
     if (this.playbackCheckTimer) clearTimeout(this.playbackCheckTimer);
     this.playbackCheckTimer = null;
     this.isDestroyed = true;
+    this.videoEventController.abort();
     this.listeners.clear();
     this.subtitleContentMap.clear();
+    this.subtitleWindowContentMap.clear();
 
     if (this.seekSafetyTimer) {
       clearTimeout(this.seekSafetyTimer);

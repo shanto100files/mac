@@ -4,6 +4,8 @@ export interface TrackInfo {
   title: string;
   lang: string;
   codec: string;
+  codecProfile?: string;
+  codecBitDepth?: number;
   selected: boolean;
   external: boolean;
   isBitmapSub?: boolean;
