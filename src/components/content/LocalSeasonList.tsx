@@ -119,6 +119,7 @@ export function LocalSeasonList({
               index={index}
               title={getEpisodeLabel(episode, title)}
               description={matched?.overview}
+              image={matched?.thumbnail}
               localFilePath={episode.uri}
               progressPercent={percent}
               watched={percent >= 85}
@@ -131,6 +132,7 @@ export function LocalSeasonList({
                       setDetails({
                         title: getEpisodeLabel(episode, title),
                         description: matched.overview!,
+                        image: matched.thumbnail,
                       })
                   : undefined
               }

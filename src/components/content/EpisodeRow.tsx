@@ -100,17 +100,19 @@ interface EpisodeRowProps {
 }
 
 const EpisodeMedia: React.FC<{ image?: string; localFilePath?: string }> = ({ image, localFilePath }) => {
+  const [failedImage, setFailedImage] = useState<string | null>(null);
+  const remoteImage = image?.trim();
+  const useRemote = !!remoteImage && /^https?:\/\//i.test(remoteImage) && failedImage !== remoteImage;
   const [localThumbnail, setLocalThumbnail] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     setLocalThumbnail(null);
-    if (localFilePath) void getDownloadedVideoThumbnail(localFilePath).then(uri => {
+    if (localFilePath && !useRemote) void getDownloadedVideoThumbnail(localFilePath).then(uri => {
       if (active) setLocalThumbnail(uri);
     });
     return () => {active = false;};
-  }, [localFilePath]);
-  const source = localThumbnail || (
-    image?.trim() && /^https?:\/\//i.test(image) ? image : undefined);
+  }, [localFilePath, useRemote]);
+  const source = useRemote ? remoteImage : localThumbnail || undefined;
   const [failed, setFailed] = useState(false);
 
   useEffect(() => setFailed(false), [source]);
@@ -122,7 +124,10 @@ const EpisodeMedia: React.FC<{ image?: string; localFilePath?: string }> = ({ im
           src={source}
           alt=""
           loading="lazy"
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (useRemote) setFailedImage(remoteImage!);
+            else setFailed(true);
+          }}
         />
       ) : (
         <IoPlayCircle size={38} className="episode-media-placeholder-icon" />

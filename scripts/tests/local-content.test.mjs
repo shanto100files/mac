@@ -62,6 +62,7 @@ function fixture() {
     watchListStorage,
   });
   return {
+    metadata: load(resolve(root, "localContent/metadata.ts")),
     model: load(resolve(root, "localContent/model.ts")),
     library: load(resolve(root, "localContent/library.ts")),
     local: load(resolve(root, "zustand/localContentStore.ts")).default,
@@ -254,4 +255,27 @@ test("local links preserve spaces, percent signs, Unicode and Windows separators
   const path = "C:\\Media\\100% Movie\\日本語";
   assert.equal(library.localContentId(library.localContentLink(path)), path);
   assert.equal(library.localContentId("https://provider/movie"), undefined);
+});
+
+
+test("Cinemeta episode names become local episode labels", async () => {
+  const axios = require("axios");
+  const originalGet = axios.get;
+  axios.get = async () => ({data: {meta: {name: "Mr. Robot", videos: [
+    {season: 1, episode: 1, name: "eps1.0_hellofriend.mov", thumbnail: "https://episodes/1.jpg", overview: "Full description"},
+    {season: 1, episode: 2, title: "Preferred title", name: "Fallback name"},
+  ]}}});
+  try {
+    const {metadata, model} = fixture();
+    const result = await metadata.fetchLocalMetadata("tt4158110", "series");
+    assert.equal(result.videos[0].title, "eps1.0_hellofriend.mov");
+    assert.equal(result.videos[0].thumbnail, "https://episodes/1.jpg");
+    assert.equal(result.videos[0].overview, "Full description");
+    assert.equal(result.videos[1].title, "Preferred title");
+    const episode = {uri: "file:///episode.mkv", name: "Mr.Robot.S01E01.mkv", folder: "Season 1", season: 1, episode: 1};
+    assert.equal(model.getEpisodeLabel(episode, {metadata: result, useMetadataTitles: true}), "S1 E1 · eps1.0_hellofriend.mov");
+    assert.equal(model.getEpisodeLabel(episode, {metadata: result, useMetadataTitles: false}), episode.name);
+  } finally {
+    axios.get = originalGet;
+  }
 });
