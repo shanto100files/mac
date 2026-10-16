@@ -5,6 +5,7 @@
 
 use std::io::{Error, ErrorKind};
 use std::net::IpAddr;
+use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -128,7 +129,10 @@ async fn relay(mut client: TcpStream, upstream_port: u16) -> std::io::Result<()>
     // before giving up. The client gets ByeDPI's last reply.
     let mut last_reply = None;
     for ip in ips.into_iter().take(MAX_ADDRESS_ATTEMPTS) {
-        match connect_through_byedpi(upstream_port, ip, port_bytes).await {
+        let connection = tokio::time::timeout(
+            Duration::from_secs(5), connect_through_byedpi(upstream_port, ip, port_bytes)
+        ).await.unwrap_or_else(|_| Err(Error::new(ErrorKind::TimedOut, "ByeDPI connection timed out")));
+        match connection {
             Ok((mut upstream, reply)) => {
                 if reply[1] == 0 {
                     client.write_all(&reply).await?;

@@ -199,6 +199,7 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
             alt=""
             className="post-image"
             loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={() => setImageFailed(true)}
           />

@@ -1,3 +1,5 @@
+import {BlurredBackdrop} from "./BlurredBackdrop";
+import {useHeroActivity} from "../../lib/hooks/useHeroActivity";
 import React from "react";
 import { LuPlay as Play } from "react-icons/lu";
 import {
@@ -32,6 +34,8 @@ const usePageVisible = () => {
 };
 
 export const Hero: React.FC<HeroProps> = ({ posts }) => {
+  const heroRef = React.useRef<HTMLDivElement>(null);
+  const {inViewport, scrolling} = useHeroActivity(heroRef);
   const navigate = useNavigate();
   const { provider } = useContentStore();
   const tvMode = settingsStorage.isTvModeEnabled();
@@ -45,7 +49,7 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
   } = useHeroRotation(
     posts,
     provider?.value || "",
-    hovered || playFocusedState || !pageVisible,
+    hovered || playFocusedState || !pageVisible || !inViewport || scrolling,
   );
   const [selectedIndex, setSelectedIndex] = React.useState<number | null>(null);
   // A dot click shows that hero until the rotation moves on.
@@ -63,18 +67,26 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
   const [artworkSize, setArtworkSize] = React.useState<{
     url: string;
     posterLike: boolean;
+    image: HTMLImageElement;
   }>();
   React.useEffect(() => {
     if (!heroArtwork) return;
+    let active = true;
     const image = new window.Image();
-    image.onload = () =>
+    image.decoding = "async";
+    image.onload = async () => {
+      await image.decode().catch(() => undefined);
+      if (!active) return;
       setArtworkSize({
         url: heroArtwork,
+        image,
         posterLike: isPosterLikeArtwork(image.naturalWidth, image.naturalHeight),
       });
-    image.onerror = () => setArtworkSize({ url: heroArtwork, posterLike: false });
+    };
+    image.onerror = () => setArtworkSize({ url: heroArtwork, image, posterLike: false });
     image.src = heroArtwork;
     return () => {
+      active = false;
       image.onload = null;
       image.onerror = null;
     };
@@ -118,7 +130,7 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
 
   if (!shownPost || metaLoading) {
     return (
-      <div className="hero-container skeleton">
+      <div ref={heroRef} className="hero-container skeleton">
         {shownPost ? (
           <div
             className="hero-background"
@@ -147,6 +159,7 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
 
   return (
     <div
+      ref={heroRef}
       className="hero-container"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -154,8 +167,10 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
       <div
         key={bgImage}
         className={`hero-background hero-fade ${posterLike ? "poster-like" : ""}`}
-        style={{ backgroundImage: `url(${bgImage})` }}
-      />
+        style={{ backgroundImage: posterLike ? undefined : `url(${bgImage})` }}
+      >
+        {posterLike && artworkSize?.image && <BlurredBackdrop image={artworkSize.image} />}
+      </div>
       <div className="hero-vignette" />
       {posterLike && (
         <img
@@ -163,6 +178,7 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
           src={bgImage}
           alt=""
           className="hero-poster hero-fade"
+          decoding="async"
         />
       )}
 

@@ -5,13 +5,49 @@ use hickory_resolver::{
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, net::SocketAddr, str::FromStr, sync::Arc};
+use std::{collections::HashMap, net::{IpAddr, SocketAddr}, str::FromStr, sync::Arc};
+use std::time::{Duration, Instant};
+use crate::nat64::{Nat64Prefix, order_addresses};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use tokio::sync::RwLock;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use wreq::{dns::Resolve, redirect::Policy, Client, Method};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use wreq_util::Emulation;
+
+lazy_static::lazy_static! {
+    static ref NAT64_CACHE: tokio::sync::RwLock<Option<(Instant, Vec<Nat64Prefix>)>> = tokio::sync::RwLock::new(None);
+}
+
+/// Discover the network's DNS64 prefix without resolving provider names through ISP DNS.
+/// The original DoH IPv4 addresses remain the destinations after NAT64 translation.
+pub async fn network_addresses(ips: Vec<IpAddr>) -> Vec<IpAddr> {
+    {
+        let cache = NAT64_CACHE.read().await;
+        if let Some((time, prefixes)) = &*cache {
+            if time.elapsed() < Duration::from_secs(60) {
+                return order_addresses(ips, prefixes);
+            }
+        }
+    }
+    let addresses = tokio::time::timeout(
+        Duration::from_secs(2), tokio::net::lookup_host("ipv4only.arpa:0")
+    ).await;
+    let mut prefixes = Vec::new();
+    if let Ok(Ok(addresses)) = addresses {
+        for address in addresses {
+            if let IpAddr::V6(ip) = address.ip() {
+                if let Some(prefix) = Nat64Prefix::from_discovery_address(ip) {
+                    if !prefixes.contains(&prefix) {
+                        prefixes.push(prefix);
+                    }
+                }
+            }
+        }
+    }
+    *NAT64_CACHE.write().await = Some((Instant::now(), prefixes.clone()));
+    order_addresses(ips, &prefixes)
+}
 
 pub fn build_hickory_resolver(provider: &str, custom_url: Option<String>) -> TokioAsyncResolver {
     let mut opts = ResolverOpts::default();
@@ -87,10 +123,8 @@ impl Resolve for CustomDnsResolver {
             vlog_debug!("[DoH] Resolving: {}", name_str);
             match resolver.lookup_ip(name_str.as_str()).await {
                 Ok(response) => {
-                    let addrs: Vec<SocketAddr> = response
-                        .into_iter()
-                        .map(|ip| SocketAddr::new(ip, 0))
-                        .collect();
+                    let ips = network_addresses(response.into_iter().collect()).await;
+                    let addrs: Vec<SocketAddr> = ips.into_iter().map(|ip| SocketAddr::new(ip, 0)).collect();
                     vlog_debug!("[DoH] Resolved {} to {:?}", name_str, addrs);
                     Ok(Box::new(addrs.into_iter()) as wreq::dns::Addrs)
                 }

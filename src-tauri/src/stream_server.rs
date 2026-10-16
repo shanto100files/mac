@@ -77,14 +77,10 @@ impl StreamDnsResolver {
 }
 
 impl StreamDnsResolver {
-    /// Resolves a host for the ByeDPI relay, IPv4 addresses first. ISP DNS returns the block
+    /// Resolves a host for the ByeDPI relay, preserving the network's NAT64 route. ISP DNS returns the block
     /// page address for blocked sites, so this uses DNS over HTTPS even when the user turned
     /// it off, and only falls back to the system DNS when DNS over HTTPS fails.
     pub async fn resolve_for_bypass(&self, host: &str) -> Vec<std::net::IpAddr> {
-        let sorted = |mut ips: Vec<std::net::IpAddr>| {
-            ips.sort_by_key(|ip| !ip.is_ipv4());
-            ips
-        };
         let doh_ips: Vec<std::net::IpAddr> = if *self.enabled.read().await {
             let resolver = self.resolver.read().await;
             resolver
@@ -100,14 +96,18 @@ impl StreamDnsResolver {
                 .unwrap_or_default()
         };
         if !doh_ips.is_empty() {
-            return sorted(doh_ips);
+            let mut doh_ips = doh_ips;
+            doh_ips.sort_by_key(|ip| !ip.is_ipv4());
+            return crate::doh_client::network_addresses(doh_ips).await;
         }
         vlog_warn!("[byedpi_relay] DoH failed for {}, trying system DNS", host);
-        let system_ips = tokio::net::lookup_host(format!("{}:0", host))
+        let system_ips: Vec<std::net::IpAddr> = tokio::net::lookup_host(format!("{}:0", host))
             .await
             .map(|addrs| addrs.map(|a| a.ip()).collect())
             .unwrap_or_default();
-        sorted(system_ips)
+        let mut system_ips = system_ips;
+        system_ips.sort_by_key(|ip: &std::net::IpAddr| !ip.is_ipv4());
+        crate::doh_client::network_addresses(system_ips).await
     }
 }
 
@@ -139,10 +139,8 @@ impl Resolve for StreamDnsResolver {
                 let resolver = resolver_lock.read().await;
                 match resolver.lookup_ip(name_str.as_str()).await {
                     Ok(response) => {
-                        let addrs: Vec<SocketAddr> = response
-                            .into_iter()
-                            .map(|ip| SocketAddr::new(ip, 0))
-                            .collect();
+                        let ips = crate::doh_client::network_addresses(response.into_iter().collect()).await;
+                        let addrs: Vec<SocketAddr> = ips.into_iter().map(|ip| SocketAddr::new(ip, 0)).collect();
                         return Ok(Box::new(addrs.into_iter()) as Addrs);
                     }
                     Err(e) => {

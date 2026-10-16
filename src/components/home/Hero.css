@@ -206,7 +206,7 @@
 
 /* Posters and small images: blurred fill plus the sharp poster on the right. */
 .hero-background.poster-like {
-  filter: blur(28px) brightness(0.7);
+  /* Blur is baked into the small canvas; scrolling only composites it. */
   transform: scale(1.15);
 }
 
@@ -239,4 +239,10 @@
   .hero-fade {
     animation: none;
   }
+}
+
+.hero-backdrop-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }

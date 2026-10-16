@@ -360,17 +360,7 @@ pub fn system_info() -> String {
     }
     match crate::ffmpeg_resolver::get_ffmpeg_path() {
         Ok(path) => {
-            let version = std::process::Command::new(&path)
-                .arg("-version")
-                .output()
-                .ok()
-                .and_then(|out| {
-                    String::from_utf8_lossy(&out.stdout)
-                        .lines()
-                        .next()
-                        .map(str::to_string)
-                })
-                .unwrap_or_else(|| "did not run".into());
+            let version = command_output(path.as_os_str(), &["-version"]);
             lines.push(format!("FFmpeg {} ({})", version, path.display()));
         }
         Err(e) => lines.push(format!("FFmpeg not found: {e}")),
@@ -380,7 +370,7 @@ pub fn system_info() -> String {
 
 /// First line of a command's stdout, or "unknown".
 #[allow(dead_code)]
-fn command_output(program: &str, args: &[&str]) -> String {
+fn command_output(program: impl AsRef<std::ffi::OsStr>, args: &[&str]) -> String {
     let mut cmd = std::process::Command::new(program);
     cmd.args(args);
     #[cfg(target_os = "windows")]

@@ -203,8 +203,13 @@ pub fn resolve_binary(base_name: &str, env_var: &str) -> Result<PathBuf, String>
     }
 
     // Check system PATH via invocation fallback
-    let check_cmd = Command::new(base_name)
-        .arg("-version")
+    let mut command = Command::new(base_name);
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    let check_cmd = command.arg("-version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();

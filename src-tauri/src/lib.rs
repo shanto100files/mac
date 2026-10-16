@@ -2,6 +2,7 @@ mod hls_playlist;
 #[macro_use]
 mod app_log;
 mod byedpi_relay;
+mod nat64;
 mod cookie_manager;
 mod doh_client;
 mod download_manager;
