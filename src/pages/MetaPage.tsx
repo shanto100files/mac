@@ -1,3 +1,6 @@
+import {ProviderMetadataDialog} from '../components/content/ProviderMetadataDialog';
+import useMetadataOverrideStore, {metadataOverrideKey} from '../lib/zustand/metadataOverrideStore';
+import {applyProviderEpisodeMetadata} from '../lib/providerEpisodeMetadata';
 import {LocalSeasonList} from '../components/content/LocalSeasonList';
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -189,7 +192,10 @@ export const MetaPage: React.FC = () => {
   const activeProviderValue = searchParams.get("provider") || provider?.value || "";
   const episodeSortOrderKey = `${EPISODE_SORT_ORDER_KEY_PREFIX}:${activeProviderValue}:${link}`;
   const { info, meta, localTitle, isLoading, error, refetch } = useContentDetails(link, activeProviderValue);
-  const [activeSeason, setActiveSeason] = useState<Link | null>(null);
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const manualMetadata = useMetadataOverrideStore(state => state.overrides[metadataOverrideKey(activeProviderValue, link)]);
+  const [providerSeason, setActiveSeason] = useState<Link | null>(null);
+  const activeSeason = useMemo(() => providerSeason ? {...providerSeason, directLinks: providerSeason.directLinks?.map(episode => applyProviderEpisodeMetadata(episode, providerSeason.title, manualMetadata))} : null, [providerSeason, manualMetadata]);
   const [dialogStreams, setDialogStreams] = useState<Stream[]>([]);
   const [dialogEpisodeTitle, setDialogEpisodeTitle] = useState("");
   const [dialogContext, setDialogContext] = useState<DialogContext | null>(null);
@@ -267,11 +273,13 @@ export const MetaPage: React.FC = () => {
     setActiveSeason(filteredLinkList.find((item: Link) => item.title === savedTitle) ?? filteredLinkList[0]);
   }, [filteredLinkList, activeSeason, link]);
 
-  const { data: episodeList, isLoading: episodeLoading, error: episodeError } = useEpisodes(
+  const { data: providerEpisodeList, isLoading: episodeLoading, error: episodeError } = useEpisodes(
     activeSeason?.episodesLink,
     activeProviderValue,
     !!activeSeason?.episodesLink,
   );
+  const episodeList = useMemo(() => providerEpisodeList?.map(episode => applyProviderEpisodeMetadata(episode, activeSeason?.title || "", manualMetadata)), [providerEpisodeList, activeSeason?.title, manualMetadata]);
+
 
   const cachedPosterImage = searchParams.get("poster") || "";
   const cachedBgImage = searchParams.get("background") || searchParams.get("bg") || "";
@@ -780,6 +788,7 @@ export const MetaPage: React.FC = () => {
           genres={meta?.genre}
           tags={info.tags}
           onBack={() => navigate(-1)}
+          onMore={localTitle ? undefined : () => setMetadataOpen(true)}
           isPortrait={isPortrait}
           overview={
             isPortrait ? (
@@ -981,6 +990,7 @@ export const MetaPage: React.FC = () => {
           details={episodeDetails}
           onClose={() => setEpisodeDetails(null)}
         />
+        {!localTitle && <ProviderMetadataDialog open={metadataOpen} onOpenChange={setMetadataOpen} info={info} provider={activeProviderValue} link={link} themeStyle={paletteStyle} />}
         <InfoStoryDialog
           open={storyOpen}
           onClose={() => setStoryOpen(false)}

@@ -62,6 +62,8 @@ function fixture() {
     watchListStorage,
   });
   return {
+    providerOverrides: load(resolve(root, "zustand/metadataOverrideStore.ts")),
+    providerEpisodes: load(resolve(root, "providerEpisodeMetadata.ts")),
     metadata: load(resolve(root, "localContent/metadata.ts")),
     model: load(resolve(root, "localContent/model.ts")),
     library: load(resolve(root, "localContent/library.ts")),
@@ -278,4 +280,42 @@ test("Cinemeta episode names become local episode labels", async () => {
   } finally {
     axios.get = originalGet;
   }
+});
+
+
+test("provider episode metadata matches season labels and filename formats without changing playback links", () => {
+  const {providerEpisodes} = fixture();
+  const metadata = {imdbId: "tt123", title: "Show", type: "series", useEpisodeMetadata: true, videos: [{season: 2, episode: 3, title: "Matched episode", overview: "Full description", thumbnail: "https://episode.jpg"}]};
+  for (const [title, season] of [["Episode 03", "Season 2"], ["Ep03", "S02"], ["S02E03", "Season 2"], ["Show.2x03.1080p.mkv", "Season 2"], ["3", "Season 2"], ["03 - Episode", "2"], ["Show.S02E03.mkv", "Episodes"], ["Show.S02E03.1080p.mkv", "Season 2"]]) {
+    const episode = {title, link: "https://provider/episode", id: "unchanged", quickDownload: true};
+    assert.deepEqual(providerEpisodes.applyProviderEpisodeMetadata(episode, season, metadata), {...episode, title: "S2 E3 · Matched episode", description: "Full description", image: "https://episode.jpg"});
+  }
+  for (const [title, season] of [["Episode 04", "Season 2"], ["Episode 03", "Unknown"], ["S01E03", "Season 2"], ["Trailer", "Season 2"], ["Episode 3.5", "Season 2"], ["1080p", "Season 2"]]) {
+    const episode = {title, link: "https://provider/episode"};
+    assert.equal(providerEpisodes.applyProviderEpisodeMetadata(episode, season, metadata), episode);
+  }
+  const episode = {title: "Episode 3", link: "https://provider/episode"};
+  assert.equal(providerEpisodes.applyProviderEpisodeMetadata(episode, "Season 2", {...metadata, useEpisodeMetadata: false}), episode);
+  assert.equal(providerEpisodes.applyProviderEpisodeMetadata(episode, "Season 2", {...metadata, type: "movie"}), episode);
+});
+
+test("provider matches persist per provider and title and preserve playback information", () => {
+  const {providerOverrides, values} = fixture();
+  const {default: store, metadataOverrideKey, applyMetadataOverride} = providerOverrides;
+  const metadata = {imdbId: "tt123", title: "Matched", type: "series", poster: "https://poster", useEpisodeMetadata: true};
+  store.getState().setMetadata("provider", "link", metadata);
+  const key = metadataOverrideKey("provider", "link");
+  assert.deepEqual(JSON.parse(values.get("provider-metadata-overrides-v1"))[key], metadata);
+  assert.equal(store.getState().overrides[metadataOverrideKey("other", "link")], undefined);
+  const info = {title: "Provider title", image: "original", synopsis: "Synopsis", type: "series", quickDownload: true, populateMeta: false, linkList: [{title: "Season 1", episodesLink: "https://episodes"}]};
+  const merged = applyMetadataOverride(info, metadata);
+  assert.equal(merged.title, "Matched");
+  assert.equal(merged.linkList, info.linkList);
+  assert.equal(merged.quickDownload, true);
+  assert.equal(info.title, "Provider title");
+  store.getState().setMetadata("provider", "link", {...metadata, useEpisodeMetadata: false});
+  assert.equal(store.getState().overrides[key].useEpisodeMetadata, false);
+  store.getState().setMetadata("provider", "link");
+  assert.deepEqual(store.getState().overrides, {});
+  assert.equal(applyMetadataOverride(info), info);
 });

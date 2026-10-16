@@ -1,5 +1,5 @@
 import React from "react";
-import { LuArrowLeft as ArrowLeft } from "react-icons/lu";
+import { LuEllipsisVertical, LuArrowLeft as ArrowLeft } from "react-icons/lu";
 import { FocusableButton } from "../layout/FocusableButton";
 
 interface ContentHeroProps {
@@ -12,6 +12,7 @@ interface ContentHeroProps {
   genres?: string[];
   tags?: string[];
   onBack: () => void;
+  onMore?: () => void;
   isPortrait?: boolean;
   overview?: React.ReactNode;
 }
@@ -26,6 +27,7 @@ export const ContentHero: React.FC<ContentHeroProps> = ({
   genres,
   tags,
   onBack,
+  onMore,
   isPortrait,
   overview,
 }) => {
@@ -56,6 +58,7 @@ export const ContentHero: React.FC<ContentHeroProps> = ({
         >
           <ArrowLeft size={22} />
         </FocusableButton>
+        {onMore && <FocusableButton className="content-back-button content-more-button" aria-label="More options" onClick={onMore}><LuEllipsisVertical size={22} /></FocusableButton>}
 
         <div className="content-hero-portrait-layout">
           <div className="content-hero-portrait-poster">
@@ -122,6 +125,7 @@ export const ContentHero: React.FC<ContentHeroProps> = ({
         >
           <ArrowLeft size={22} />
         </FocusableButton>
+        {onMore && <FocusableButton className="content-back-button content-more-button" aria-label="More options" onClick={onMore}><LuEllipsisVertical size={22} /></FocusableButton>}
       </div>
 
       <div className="content-hero-inner">

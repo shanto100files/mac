@@ -41,14 +41,16 @@ interface Props {
   themeStyle?: CSSProperties;
 }
 
-function MetadataPicker({
+export function MetadataPicker({
   title,
   onChoose,
   onBack,
+  errorHint = "You can go back and use the folder name.",
 }: {
   title: LocalTitle;
   onChoose: (meta: LocalMetadata) => void;
   onBack: () => void;
+  errorHint?: string;
 }) {
   const [mode, setMode] = useState<"search" | "id">("search");
   const [query, setQuery] = useState(cleanFolderQuery(title.name));
@@ -230,7 +232,7 @@ function MetadataPicker({
         )}
         {error && (
           <p role="alert" className="local-content-error">
-            {error}. You can go back and use the folder name.
+            {error}. {errorHint}
           </p>
         )}
       </div>

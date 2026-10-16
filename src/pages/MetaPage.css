@@ -2478,3 +2478,5 @@
 .content-episode-row.selected { border-color: var(--detail-accent); background: var(--detail-accent-container); opacity: 1; }
 .episode-selection-check { display: flex; align-items: center; justify-content: center; width: 22px; flex-shrink: 0; }
 .episode-selection-check > span { width: 18px; height: 18px; border: 1px solid currentColor; border-radius: 4px; }
+
+.content-more-button { left: auto; right: 24px; }
