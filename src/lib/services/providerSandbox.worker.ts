@@ -158,6 +158,8 @@ const sandboxFetch = async (
     statusText: response.statusText,
     headers: response.headers,
   }) as Response & { rawHeaders?: Array<[string, string]> };
+  // A constructed Response has an empty URL; preserve the native final URL.
+  Object.defineProperty(res, "url", { value: response.url });
   res.rawHeaders = response.headers;
   return res;
 };
@@ -228,7 +230,11 @@ const sandboxAxiosAdapter: AxiosAdapter = async (config) => {
     statusText: response.statusText,
     headers: responseHeaders,
     config,
-    request: { url },
+    request: {
+      url,
+      responseURL: response.url,
+      res: { responseUrl: response.url },
+    },
   };
 
   const validateStatus =
