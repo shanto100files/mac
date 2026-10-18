@@ -1,8 +1,9 @@
 !macro NSIS_HOOK_POSTINSTALL
-  ReadRegDWord $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\x64" "Installed"
+  ; ARCH is supplied by Tauri's NSIS template (x64 or arm64).
+  ReadRegDWord $0 HKLM "SOFTWARE\Microsoft\VisualStudio\14.0\VC\Runtimes\${ARCH}" "Installed"
   ${If} $0 != 1
     DetailPrint "Installing Microsoft Visual C++ Redistributable..."
-    ExecWait '"$INSTDIR\resources\windows\vc_redist.x64.exe" /install /quiet /norestart' $0
+    ExecWait '"$INSTDIR\resources\windows\vc_redist.exe" /install /quiet /norestart' $0
     ${If} $0 != 0
     ${AndIf} $0 != 1638
     ${AndIf} $0 != 3010

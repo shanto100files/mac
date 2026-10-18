@@ -2,12 +2,16 @@ import { execSync } from "child_process";
 import { existsSync, writeFileSync, readFileSync, mkdirSync, statSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { windowsBinaryMatches } from "./windows-binary.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
 const windowsResourcesDir = join(rootDir, "src-tauri", "resources", "windows");
-const vcRedistPath = join(windowsResourcesDir, "vc_redist.x64.exe");
-const vcRedistUrl = "https://aka.ms/vs/17/release/vc_redist.x64.exe";
+const windowsArch = process.arch;
+const mpvArch = windowsArch === "arm64" ? "aarch64" : "x86_64";
+const vcRedistPath = join(windowsResourcesDir, "vc_redist.exe");
+const vcRedistUrl = `https://aka.ms/vs/17/release/vc_redist.${windowsArch}.exe`;
+const runtimeMarker = join(windowsResourcesDir, ".vega-vcredist-arch");
 const libDir = join(rootDir, "src-tauri", "lib");
 
 const cliPaths = [
@@ -29,10 +33,10 @@ async function resolveMpvBaseUrl() {
     if (res.ok) {
       const text = await res.text();
       if (
-        text.includes("mpv-dev-lgpl-x86_64") &&
+        text.includes(`mpv-dev-lgpl-${mpvArch}`) &&
         text
           .split("\n")
-          .some((l) => l.includes("mpv-dev-lgpl-x86_64") && !l.includes("v3"))
+          .some((l) => l.includes(`mpv-dev-lgpl-${mpvArch}`) && !l.includes("v3"))
       ) {
         return "https://github.com/zhongfly/mpv-winbuild/releases/latest/download";
       }
@@ -53,7 +57,7 @@ async function resolveMpvBaseUrl() {
       for (const rel of releases) {
         const hasAsset = rel.assets?.some(
           (a) =>
-            a.name.includes("mpv-dev-lgpl-x86_64") && !a.name.includes("v3"),
+            a.name.includes(`mpv-dev-lgpl-${mpvArch}`) && !a.name.includes("v3"),
         );
         if (hasAsset) {
           console.log(
@@ -77,7 +81,9 @@ const hasWindowsDlls = () => {
     existsSync(dllPath) &&
     statSync(dllPath).size > 1024 * 1024 &&
     existsSync(wrapperPath) &&
-    statSync(wrapperPath).size > 1024
+    statSync(wrapperPath).size > 1024 &&
+    windowsBinaryMatches(dllPath, windowsArch) &&
+    windowsBinaryMatches(wrapperPath, windowsArch)
   );
 };
 
@@ -85,7 +91,8 @@ const hasWindowsDlls = () => {
 // libmpv-2.dll + libmpv-wrapper.dll into src-tauri/lib and the VC++ runtime
 // the installer hook installs.
 async function main() {
-  if (!existsSync(vcRedistPath)) {
+  if (!existsSync(vcRedistPath) || !existsSync(runtimeMarker) ||
+      readFileSync(runtimeMarker, "utf8").trim() !== windowsArch) {
     console.log(
       "[setup-lib] Downloading Microsoft Visual C++ Redistributable...",
     );
@@ -98,10 +105,11 @@ async function main() {
         );
       }
       writeFileSync(vcRedistPath, Buffer.from(await response.arrayBuffer()));
+      writeFileSync(runtimeMarker, windowsArch);
     } catch (err) {
       // tauri.windows.conf.json bundles this file; the build fails without it.
       throw new Error(
-        `[setup-lib] could not download vc_redist.x64.exe: ${err.message}`,
+        `[setup-lib] could not download ${windowsArch} Visual C++ runtime: ${err.message}`,
       );
     }
   }
@@ -144,6 +152,9 @@ async function main() {
     } else {
       throw err;
     }
+  }
+  if (!hasWindowsDlls()) {
+    throw new Error(`[setup-lib] libmpv DLLs do not match Windows ${windowsArch}`);
   }
 }
 

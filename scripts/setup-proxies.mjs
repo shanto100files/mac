@@ -12,6 +12,7 @@ import {
 import { arch, platform, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { windowsBinaryMatches } from './windows-binary.mjs';
 
 const root = join(fileURLToPath(new URL('..', import.meta.url)));
 const resourcesDir = join(root, 'src-tauri', 'resources');
@@ -59,7 +60,7 @@ async function setupByeDpi() {
   const isWin = platform() === 'win32';
   const targetBinary = join(byedpiDir, isWin ? 'ciadpi.exe' : 'ciadpi');
 
-  if (existsSync(targetBinary)) {
+  if (existsSync(targetBinary) && (!isWin || windowsBinaryMatches(targetBinary, 'x64'))) {
     console.log(`ByeDPI binary already exists at ${targetBinary}`);
     return;
   }
@@ -72,6 +73,9 @@ async function setupByeDpi() {
   const tmpDir = mkdtempSync(join(tmpdir(), 'byedpi-'));
   try {
     if (isWin) {
+      // Upstream only publishes Windows x64. It runs as a separate process
+      // using Windows 11's x64 emulation on ARM64 (never loaded as a DLL).
+      if (arch() === 'arm64') console.log('[setup-proxies] ByeDPI uses Windows 11 x64 emulation; WARP is native ARM64.');
       const url = `https://github.com/hufrea/byedpi/releases/download/v${BYEDPI_VERSION}/byedpi-17.3-x86_64-w64.zip`;
       const zipPath = join(tmpDir, 'byedpi.zip');
       await downloadFile(url, zipPath);
@@ -106,7 +110,7 @@ async function setupUsque() {
   const isWin = platform() === 'win32';
   const targetBinary = join(warpDir, isWin ? 'usque.exe' : 'usque');
 
-  if (existsSync(targetBinary)) {
+  if (existsSync(targetBinary) && (!isWin || windowsBinaryMatches(targetBinary, arch()))) {
     console.log(`Usque binary already exists at ${targetBinary}`);
     return;
   }

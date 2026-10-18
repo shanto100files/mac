@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -11,9 +12,14 @@ import {
 import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { windowsBinaryMatches } from "./windows-binary.mjs";
 
 const releaseTag = "b6.1.2-rc.1";
-const releaseIdentity = `descriptinc/ffmpeg-ffprobe-static@${releaseTag}`;
+const windowsArm = platform() === "win32" && arch() === "arm64";
+const armRelease = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip";
+const releaseIdentity = windowsArm
+  ? "BtbN/FFmpeg-Builds@8.1-winarm64"
+  : `descriptinc/ffmpeg-ffprobe-static@${releaseTag}`;
 const releaseBase =
   `https://github.com/descriptinc/ffmpeg-ffprobe-static/releases/download/${releaseTag}`;
 const root = join(fileURLToPath(new URL("..", import.meta.url)));
@@ -21,6 +27,9 @@ const destination = join(root, "src-tauri", "resources", "ffmpeg-sidecar");
 const executableSuffix = platform() === "win32" ? ".exe" : "";
 
 function verifyBinary(path, tool) {
+  if (platform() === "win32" && !windowsBinaryMatches(path, arch())) {
+    throw new Error(`${tool} does not match Windows ${arch()}`);
+  }
   const result = spawnSync(path, ["-version"], { encoding: "utf8" });
   if (result.status !== 0) {
     throw new Error(
@@ -140,10 +149,20 @@ try {
   rmSync(destination, { recursive: true, force: true });
   mkdirSync(destination, { recursive: true });
 
+  if (windowsArm) {
+    const response = await fetch(armRelease, { redirect: "follow" });
+    if (!response.ok) throw new Error(`ARM64 FFmpeg download failed: HTTP ${response.status}`);
+    const archive = join(temporary, "ffmpeg-arm64.zip");
+    writeFileSync(archive, Buffer.from(await response.arrayBuffer()));
+    execFileSync("tar", ["-xf", archive, "-C", temporary], { stdio: "inherit" });
+  }
+
   for (const tool of ["ffmpeg", "ffprobe"]) {
     const output = join(destination, `${tool}${executableSuffix}`);
 
-    if (platform() === "darwin") {
+    if (windowsArm) {
+      copyFileSync(join(temporary, "ffmpeg-n8.1-latest-winarm64-gpl-8.1", "bin", `${tool}.exe`), output);
+    } else if (platform() === "darwin") {
       const intel = join(temporary, `${tool}-x64`);
       const appleSilicon = join(temporary, `${tool}-arm64`);
       await downloadAsset(platformAssetName(tool, "x64"), intel);

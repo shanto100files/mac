@@ -17,6 +17,8 @@ jobs:
       fail-fast: false
       matrix:
         platform: [macos-latest, ubuntu-22.04, windows-latest]
+        include:
+          - platform: windows-11-arm
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -47,16 +49,20 @@ jobs:
       # mpv player engine (Windows only). postinstall already ran the script;
       # run it again so a failed download fails here, not in the bundler.
       - name: Bundle libmpv (Windows only)
-        if: matrix.platform == 'windows-latest'
+        if: runner.os == 'Windows'
         shell: bash
         run: |
           node scripts/setup-libmpv.mjs
-          ls -la src-tauri/lib/libmpv-2.dll src-tauri/lib/libmpv-wrapper.dll src-tauri/resources/windows/vc_redist.x64.exe
+          ls -la src-tauri/lib/libmpv-2.dll src-tauri/lib/libmpv-wrapper.dll src-tauri/resources/windows/vc_redist.exe
+
+      - name: Verify Windows binary architectures
+        if: runner.os == 'Windows'
+        run: node scripts/verify-windows-binaries.mjs
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.platform == 'windows-11-arm' && 'aarch64-pc-windows-msvc' || '' }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -75,20 +81,20 @@ jobs:
           releaseBody: "Automated release of Vega."
           releaseDraft: true
           includeUpdaterJson: true
-          args: ${{ matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || matrix.platform == 'windows-latest' && '--bundles nsis' || '' }}
+          args: ${{ matrix.platform == 'macos-latest' && '--target universal-apple-darwin' || matrix.platform == 'windows-11-arm' && '--target aarch64-pc-windows-msvc --bundles nsis' || matrix.platform == 'windows-latest' && '--bundles nsis' || '' }}
 
       - name: Build MSIX (Windows only)
-        if: matrix.platform == 'windows-latest'
-        run: npm run build:msix
+        if: runner.os == 'Windows'
+        run: npm run ${{ matrix.platform == 'windows-11-arm' && 'build:msix:arm64' || 'build:msix' }}
 
       - name: Get version
         id: version
-        if: matrix.platform == 'windows-latest'
+        if: runner.os == 'Windows'
         run: echo "app_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
         shell: bash
 
       - name: Upload Windows installers to Release
-        if: matrix.platform == 'windows-latest'
+        if: runner.os == 'Windows'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -96,6 +102,7 @@ jobs:
           shopt -s nullglob
           installers=(
             src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
             src-tauri/target/msix/*.msix
           )
           if [ ${#installers[@]} -eq 0 ]; then
