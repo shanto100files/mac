@@ -1,0 +1,5 @@
+[env]
+# boring-sys2 skips its Windows no-assembly workaround when host == target.
+# Its ARM64 MSVC build then references assembly routines that were not emitted.
+# Keep this CMake workaround scoped to Windows ARM64, including native runners.
+CMAKE_TOOLCHAIN_FILE_aarch64_pc_windows_msvc = { value = "cmake/windows-arm64.cmake", relative = true }
