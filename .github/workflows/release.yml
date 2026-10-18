@@ -87,13 +87,21 @@ jobs:
         if: runner.os == 'Windows'
         run: npm run ${{ matrix.platform == 'windows-11-arm' && 'build:msix:arm64' || 'build:msix' }}
 
+      - name: Stage MSIX for Store bundle
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix-${{ runner.arch }}
+          path: src-tauri/target/msix/*.msix
+          if-no-files-found: error
+
       - name: Get version
         id: version
         if: runner.os == 'Windows'
         run: echo "app_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Upload Windows installers to Release
+      - name: Upload Windows EXE installers to Release
         if: runner.os == 'Windows'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -103,13 +111,55 @@ jobs:
           installers=(
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/*.exe
-            src-tauri/target/msix/*.msix
           )
           if [ ${#installers[@]} -eq 0 ]; then
             echo "No Windows installers found"
             exit 1
           fi
           gh release upload "app-v${{ steps.version.outputs.app_version }}" "${installers[@]}" --clobber
+
+  release-windows-store:
+    name: Combine Windows Store packages
+    needs: release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download Windows MSIX packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: windows-msix-*
+          path: store-packages
+
+      - name: Test multi-architecture bundling
+        shell: pwsh
+        run: ./scripts/tests/windows-msix-bundle.test.ps1
+
+      - name: Build combined Store bundle
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          ./scripts/bundle-windows-msix.ps1 -InputDirectory store-packages -OutputPath "store-bundle/Vega_${version}_x64_arm64.msixbundle"
+
+      - name: Upload combined bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-store-bundle
+          path: store-bundle/*.msixbundle
+          if-no-files-found: error
+
+      - name: Upload combined bundle to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          gh release upload "app-v$version" "store-bundle/Vega_${version}_x64_arm64.msixbundle" --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to upload the Windows Store bundle.' }
+
   release-android:
     permissions:
       contents: write
