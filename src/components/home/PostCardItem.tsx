@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { LuX as X } from "react-icons/lu";
 import { useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
+import { setFocus } from "@noriginmedia/norigin-spatial-navigation-core";
 import { settingsStorage } from "../../lib/storage";
 import { cn } from "../../lib/utils";
 import {
@@ -57,17 +58,55 @@ interface PostCardItemProps {
   onFocus?: () => void;
 }
 
-export const PostCardItem: React.FC<PostCardItemProps> = ({
+function PostRemoveButton({post, onRemove, label, cardFocusKey, tvMode, onFocusChange}: {
+  post: Post;
+  onRemove: NonNullable<PostCardItemProps['onRemove']>;
+  label: string;
+  cardFocusKey: string;
+  tvMode: boolean;
+  onFocusChange: (focused: boolean) => void;
+}) {
+  const {ref, focused} = useFocusable({
+    focusKey: `${cardFocusKey}_REMOVE`,
+    focusable: tvMode,
+    onEnterPress: () => onRemove(post, {
+      stopPropagation: () => {}, preventDefault: () => {},
+    } as any),
+    onArrowPress: direction => {
+      if (direction === 'down') { setFocus(cardFocusKey); return false; }
+      return true;
+    },
+    onFocus: layout => {
+      onFocusChange(true);
+      layout.node.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'nearest'});
+    },
+    onBlur: () => onFocusChange(false),
+  });
+  return (
+    <button ref={ref as any} type="button"
+      className={cn('post-remove-btn', focused && 'tv-focus focused')}
+      onClick={e => {e.stopPropagation(); onRemove(post, e);}}
+      title={label} aria-label={`${label}: ${post.title}`} tabIndex={tvMode ? -1 : 0}>
+      <X size={20} />
+    </button>
+  );
+}
+
+export const PostCardItem = memo(function PostCardItem({
   post,
   onClick,
   onRemove,
   removeLabel = "Remove from history",
   focusKey: customFocusKey,
   onFocus: customOnFocus,
-}) => {
+}: PostCardItemProps) {
   const isAndroid = navigator.userAgent.toLowerCase().includes("android");
   const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
   const [imageFailed, setImageFailed] = useState(false);
+  const [removeFocused, setRemoveFocused] = useState(false);
+  const paletteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useEffect(() => () => clearTimeout(paletteTimer.current), [post.image]);
 
   useEffect(() => setImageFailed(false), [post.image]);
 
@@ -85,52 +124,21 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
   const removeFocusKey = `${cardFocusKey}_REMOVE`;
 
   const {
-    ref: removeRef,
-    focused: removeFocused,
-    focusSelf: focusRemove,
-  } = useFocusable({
-    focusKey: removeFocusKey,
-    focusable: tvMode && Boolean(onRemove),
-    onEnterPress: () => {
-      if (onRemove) {
-        onRemove(post, {
-          stopPropagation: () => {},
-          preventDefault: () => {},
-        } as any);
-      }
-    },
-    onArrowPress: (direction) => {
-      if (direction === "down") {
-        focusCard();
-        return false;
-      }
-      return true;
-    },
-    onFocus: (layout) => {
-      layout.node.scrollIntoView({
-        behavior: "smooth",
-        block: "nearest",
-        inline: "nearest",
-      });
-    },
-  });
-
-  const {
     ref: cardRef,
     focused: cardFocused,
-    focusSelf: focusCard,
   } = useFocusable({
     focusKey: cardFocusKey,
     focusable: tvMode,
     onEnterPress: () => onClick(post),
     onArrowPress: (direction) => {
       if (direction === "up" && onRemove) {
-        focusRemove();
+        setFocus(removeFocusKey);
         return false;
       }
       return true;
     },
     onFocus: (layout) => {
+      setRemoveFocused(false);
       prepareTheme();
       customOnFocus?.();
       layout.node.scrollIntoView({
@@ -154,10 +162,17 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
         isLandscape && "post-card-landscape",
         isSquare && "post-card-square",
         cardFocused && "tv-focus",
-        removeFocused && "child-focused",
+        onRemove && removeFocused && "child-focused",
       )}
-      onPointerEnter={prepareTheme}
+      onPointerEnter={(event) => {
+        if (event.pointerType !== 'mouse') return;
+        clearTimeout(paletteTimer.current);
+        paletteTimer.current = setTimeout(prepareTheme, 220);
+      }}
+      onPointerLeave={() => clearTimeout(paletteTimer.current)}
+      onPointerDown={() => clearTimeout(paletteTimer.current)}
       onClick={() => {
+        clearTimeout(paletteTimer.current);
         prepareTheme();
         onClick(post);
       }}
@@ -200,28 +215,14 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
             className="post-image"
             loading="lazy"
             decoding="async"
+            draggable={false}
             referrerPolicy="no-referrer"
             onError={() => setImageFailed(true)}
           />
         )}
         {onRemove && (
-          <button
-            ref={removeRef as any}
-            type="button"
-            className={cn(
-              "post-remove-btn",
-              removeFocused && "tv-focus focused",
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onRemove(post, e);
-            }}
-            title={removeLabel}
-            aria-label={`${removeLabel}: ${post.title}`}
-            tabIndex={tvMode ? -1 : 0}
-          >
-            <X size={20} />
-          </button>
+          <PostRemoveButton post={post} onRemove={onRemove} label={removeLabel}
+            cardFocusKey={cardFocusKey} tvMode={tvMode} onFocusChange={setRemoveFocused} />
         )}
         {post.progress !== undefined && (
           <div className="post-progress-bar-container">
@@ -243,4 +244,4 @@ export const PostCardItem: React.FC<PostCardItemProps> = ({
       </div>
     </div>
   );
-};
+});

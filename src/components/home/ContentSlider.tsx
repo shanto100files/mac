@@ -1,9 +1,6 @@
-import React, { useRef } from "react";
+import React, { memo, useCallback, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Swiper, SwiperSlide } from "swiper/react";
-import { FreeMode, Mousewheel } from "swiper/modules";
-import type { Swiper as SwiperInstance } from "swiper";
-import "swiper/css";
+import { installHorizontalDrag } from "../../lib/horizontalDrag";
 import {
   LuChevronLeft as ChevronLeft,
   LuChevronRight as ChevronRight,
@@ -27,7 +24,7 @@ interface ContentSliderProps {
   onRemove?: (post: Post, e: React.MouseEvent) => void;
 }
 
-export const ContentSlider: React.FC<ContentSliderProps> = ({
+export const ContentSlider = memo(function ContentSlider({
   title,
   posts,
   isLoading,
@@ -35,8 +32,8 @@ export const ContentSlider: React.FC<ContentSliderProps> = ({
   filter,
   searchQuery,
   onRemove,
-}) => {
-  const swiperRef = useRef<SwiperInstance | null>(null);
+}: ContentSliderProps) {
+  const rowRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const sanitizedTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
 
@@ -48,12 +45,20 @@ export const ContentSlider: React.FC<ContentSliderProps> = ({
     trackChildren: true,
   });
 
+  useEffect(() => {
+    if (rowRef.current) return installHorizontalDrag(rowRef.current);
+  }, [isLoading, posts.length]);
+
   const handleScroll = (direction: "left" | "right") => {
-    if (direction === "left") swiperRef.current?.slidePrev();
-    else swiperRef.current?.slideNext();
+    const row = rowRef.current;
+    if (!row) return;
+    row.scrollBy({
+      left: row.clientWidth * 0.8 * (direction === "left" ? -1 : 1),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    });
   };
 
-  const handlePostClick = (post: Post) => {
+  const handlePostClick = useCallback((post: Post) => {
     const finalProvider = post.providerValue || providerValue;
 
     let url = `/content/${encodeURIComponent(post.link)}`;
@@ -66,7 +71,7 @@ export const ContentSlider: React.FC<ContentSliderProps> = ({
       url += `?${queryString}`;
     }
     navigate(url);
-  };
+  }, [navigate, providerValue]);
 
   if (isLoading) {
     return (
@@ -126,46 +131,24 @@ export const ContentSlider: React.FC<ContentSliderProps> = ({
             <ChevronLeft size={32} />
           </button>
 
-          <Swiper
+          <div
+            ref={rowRef}
             className="slider-row"
-            modules={[Mousewheel, FreeMode]}
-            onSwiper={(swiper) => {
-              swiperRef.current = swiper;
-            }}
-            slidesPerView="auto"
-            slidesPerGroupAuto
-            spaceBetween={16}
-            speed={320}
-            freeMode={{
-              enabled: true,
-              momentum: true,
-              sticky: false,
-            }}
-            mousewheel={{
-              enabled: true,
-              forceToAxis: true,
-              releaseOnEdges: true,
-              sensitivity: 1,
-            }}
-            breakpoints={{
-              0: { slidesOffsetBefore: 16, slidesOffsetAfter: 16 },
-              769: { slidesOffsetBefore: 44, slidesOffsetAfter: 44 },
-            }}
-            virtual={false}>
+            role="group"
+            aria-label={title}>
             {posts.map((post, index) => (
-              <SwiperSlide
+              <div
                 className="content-slider-slide"
-                key={`${post.link}-${index}`}
-                virtualIndex={index}>
+                key={`${post.link}-${index}`}>
                 <PostCardItem
                   post={post}
                   focusKey={`CARD_${sanitizedTitle}_${index}_${post.link.replace(/[^a-zA-Z0-9_-]/g, "_")}`}
                   onClick={handlePostClick}
                   onRemove={onRemove}
                 />
-              </SwiperSlide>
+              </div>
             ))}
-          </Swiper>
+          </div>
 
           <button
             className="slider-arrow right"
@@ -179,4 +162,4 @@ export const ContentSlider: React.FC<ContentSliderProps> = ({
       </div>
     </FocusContext.Provider>
   );
-};
+});

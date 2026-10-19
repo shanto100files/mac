@@ -1,6 +1,7 @@
 .slider-container {
   position: relative;
   margin-bottom: 20px;
+  contain: layout style;
 }
 
 .slider-header {
@@ -81,13 +82,28 @@
 
 .slider-row {
   width: 100%;
-  padding: 10px 0 12px;
-  overflow: hidden;
-}
-
-.slider-row .swiper-wrapper {
   display: flex;
   align-items: flex-start;
+  gap: 16px;
+  padding: 10px 44px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: 44px;
+  scrollbar-width: none;
+}
+
+.slider-row::-webkit-scrollbar {
+  display: none;
+}
+
+.slider-row.is-dragging {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.slider-row.is-dragging .post-card {
+  cursor: grabbing;
 }
 
 .slider-row.skeleton-row {
@@ -307,19 +323,10 @@
     width: 150px;
   }
 
-  .content-slider-slide {
-    flex-basis: 150px;
-    width: 150px;
-  }
 }
 
 @media (max-width: 768px) {
   .post-card {
-    width: 132px;
-  }
-
-  .content-slider-slide {
-    flex-basis: 132px;
     width: 132px;
   }
 
@@ -329,6 +336,11 @@
 
   .slider-row.skeleton-row {
     padding-inline: 16px;
+  }
+
+  .slider-row {
+    padding-inline: 16px;
+    scroll-padding-inline: 16px;
   }
 
   .slider-header {

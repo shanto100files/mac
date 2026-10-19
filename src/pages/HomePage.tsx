@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useCallback, useMemo } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   useHomePageData,
@@ -22,7 +22,8 @@ export const HomePage: React.FC = () => {
   const query = searchParams.get("q") || "";
   const navigate = useNavigate();
 
-  const { provider, installedProviders } = useContentStore();
+  const provider = useContentStore(state => state.provider);
+  const installedProviders = useContentStore(state => state.installedProviders);
 
   const {
     data: homeData = [],
@@ -42,6 +43,10 @@ export const HomePage: React.FC = () => {
   } = useSearch(query, provider?.value, !!query);
 
   const history = useWatchHistoryStore((state) => state.history);
+  const removeHistoryPost = useCallback((post: {link: string}, e: React.MouseEvent) => {
+    e.stopPropagation();
+    useWatchHistoryStore.getState().removeItem({link: post.link} as any);
+  }, []);
   // Read on mount: Settings is a separate route, so Home remounts after a change.
   const [showContinueWatching] = React.useState(() =>
     settingsStorage.showContinueWatching(),
@@ -217,17 +222,12 @@ export const HomePage: React.FC = () => {
           <ContentSlider
             title="Continue Watching"
             posts={continueWatchingPosts}
-            onRemove={(post, e) => {
-              e.stopPropagation();
-              useWatchHistoryStore
-                .getState()
-                .removeItem({ link: post.link } as any);
-            }}
+            onRemove={removeHistoryPost}
           />
         )}
         {homeData.map((category, index) => (
           <ContentSlider
-            key={`category-${index}`}
+            key={`${provider?.value}-category-${index}-${category.title}`}
             title={category.title}
             posts={category.Posts}
             filter={category.filter}
