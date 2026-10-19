@@ -197,6 +197,13 @@ export const AudioTrackMenu: React.FC<AudioTrackMenuProps> = ({
             </FocusableButton>
           );
         })}
+        <FocusableButton
+          className="inline-menu-item"
+          focusKey="AUDIO_MENU_CLOSE"
+          onClick={onClose}
+        >
+          Close
+        </FocusableButton>
       </div>
     </FocusContext.Provider>
   );

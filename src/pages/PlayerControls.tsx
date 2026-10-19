@@ -295,11 +295,28 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     [],
   );
 
-  // Close menus when clicking outside
+  // Capture outside presses before the controls' click handlers stop propagation.
   useEffect(() => {
-    const handleDocClick = () => setOpenMenu(null);
-    if (openMenu) document.addEventListener("click", handleDocClick);
-    return () => document.removeEventListener("click", handleDocClick);
+    if (!openMenu) return;
+    const handleOutsidePress = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".inline-menu-container")) return;
+      setOpenMenu(null);
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      // The delay editor uses Escape to cancel its own edit first.
+      if (event.target instanceof HTMLInputElement) return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpenMenu(null);
+    };
+    document.addEventListener("pointerdown", handleOutsidePress, true);
+    document.addEventListener("keydown", handleEscape, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePress, true);
+      document.removeEventListener("keydown", handleEscape, true);
+    };
   }, [openMenu]);
 
   const toggleMenu = (

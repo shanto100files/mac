@@ -692,7 +692,10 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(
             tauri_plugin_window_state::Builder::new()
-                .with_state_flags(StateFlags::all() & !StateFlags::DECORATIONS)
+                // Fullscreen belongs to a playback session, not the next launch.
+                .with_state_flags(
+                    StateFlags::all() & !(StateFlags::DECORATIONS | StateFlags::FULLSCREEN),
+                )
                 .build(),
         );
 

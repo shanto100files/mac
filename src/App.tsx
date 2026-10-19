@@ -32,6 +32,7 @@ import {
   doesFocusableExist,
 } from "@noriginmedia/norigin-spatial-navigation-core";
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   initializeSyncService,
   publishSyncManifest,
@@ -78,6 +79,27 @@ export default function App() {
   useGamepadNavigation();
 
   const { primary } = useThemeStore();
+
+  useEffect(() => {
+    // Keep an escape route even when fullscreen was entered outside the player.
+    // Player/menu handlers run first and mark the keys they handled.
+    const handleWindowShortcut = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.repeat) return;
+      if (event.key !== "F11" && event.key !== "Escape") return;
+      const toggle = event.key === "F11";
+      event.preventDefault();
+      void (async () => {
+        const win = getCurrentWindow();
+        const fullscreen = await win.isFullscreen();
+        if (!toggle && !fullscreen) return;
+        const next = toggle && !fullscreen;
+        await win.setFullscreen(next);
+        if (!next && !isWindowsPlatform()) await win.setDecorations(true);
+      })().catch((error) => console.warn("Window shortcut failed:", error));
+    };
+    window.addEventListener("keydown", handleWindowShortcut);
+    return () => window.removeEventListener("keydown", handleWindowShortcut);
+  }, []);
 
   useEffect(() => {
     settingsStorage.syncStreamDoh();

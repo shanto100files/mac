@@ -1281,6 +1281,7 @@ const DesktopPlayer: React.FC<any> = ({
       const previousState = preFullscreenStateRef.current;
       void (async () => {
         await win.setFullscreen(false).catch(() => { });
+        if (!isWindows) await win.setDecorations(true).catch(() => { });
         if (previousState) {
           await win.setAlwaysOnTop(previousState.alwaysOnTop).catch(() => { });
           if (previousState.maximized) {
@@ -1625,6 +1626,17 @@ const DesktopPlayer: React.FC<any> = ({
   const toggleFullscreen = useCallback(async () => {
     const win = getCurrentWindow();
     try {
+      // Linux window managers apply fullscreen asynchronously. Do not mistake
+      // an immediate false result for failure and remove native decorations.
+      // Position and always-on-top APIs are also unavailable on some Wayland WMs.
+      if (!isWindows) {
+        const next = !(isFullscreenRef.current || await win.isFullscreen());
+        await win.setFullscreen(next);
+        if (!next) await win.setDecorations(true);
+        isFullscreenRef.current = next;
+        setIsFullscreen(next);
+        return;
+      }
       const nativeFullscreen = await win.isFullscreen();
       const currentlyFullscreen =
         nativeFullscreen || manualFullscreenRef.current;
@@ -1681,6 +1693,7 @@ const DesktopPlayer: React.FC<any> = ({
       console.error(e);
       const previousState = preFullscreenStateRef.current;
       await win.setFullscreen(false).catch(() => { });
+      if (!isWindows) await win.setDecorations(true).catch(() => { });
       await win
         .setAlwaysOnTop(previousState?.alwaysOnTop ?? false)
         .catch(() => { });
@@ -1813,6 +1826,13 @@ const DesktopPlayer: React.FC<any> = ({
     const onTouch = () => revealControls();
 
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "F11") {
+        e.preventDefault();
+        if (!e.repeat) void toggleFullscreen();
+        return;
+      }
+      // The controls own Escape while a track menu is open.
+      if (e.key === "Escape" && playerMenuOpenRef.current) return;
       const target = e.target as HTMLElement | null;
       if (
         target?.isContentEditable ||
@@ -1892,8 +1912,8 @@ const DesktopPlayer: React.FC<any> = ({
         e.preventDefault();
         if (showEpisodeSidebarRef.current) setShowEpisodeSidebar(false);
         else if (showShortcutsRef.current) setShowShortcuts(false);
-        else if (showControlsRef.current) setShowControls(false);
         else if (isFullscreenRef.current) toggleFullscreen();
+        else if (showControlsRef.current) setShowControls(false);
         else navigate(-1);
         return;
       }

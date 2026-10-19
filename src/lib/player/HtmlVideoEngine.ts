@@ -253,6 +253,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   private selectedVideoIndex: number = 0;
   private virtualTimeOffset: number = 0;
   private probedDuration: number = 0;
+  private hasProbedAudioTracks = false;
   private isDestroyed: boolean = false;
   private videoEventController = new AbortController();
   private externalSubtitles: { url?: string; uri?: string; language?: string; title?: string }[] = [];
@@ -844,7 +845,9 @@ export class HtmlVideoEngine implements PlayerEngine {
       }
 
       const nativeAudio = (v as any).audioTracks;
-      if (nativeAudio && nativeAudio.length > 0) {
+      // Remux/MSE exposes only the selected stream. Probe IDs are container
+      // stream indexes and must survive every metadata event and audio switch.
+      if (!this.hasProbedAudioTracks && nativeAudio && nativeAudio.length > 0) {
         const audioTracks: TrackInfo[] = [];
         for (let i = 0; i < nativeAudio.length; i++) {
           const t = nativeAudio[i];
@@ -1183,6 +1186,7 @@ export class HtmlVideoEngine implements PlayerEngine {
     this.hasTriedCodecFallback = false;
     this.isCodecFallbackInProgress = false;
     this.probedHasVideo = false;
+    this.hasProbedAudioTracks = false;
     this.mediaSummary = "not probed";
     if (this.playbackCheckTimer) clearTimeout(this.playbackCheckTimer);
     this.playbackCheckTimer = null;
@@ -1334,15 +1338,20 @@ export class HtmlVideoEngine implements PlayerEngine {
           this.jassub.setVideoDimensions(primaryVideo.width, primaryVideo.height);
         }
 
+        const defaultAudioIndex = Math.max(
+          0,
+          probeResult.audio_tracks.findIndex((at) => at.is_default),
+        );
         audioTracks = probeResult.audio_tracks.map((at, idx) => ({
           id: at.index,
           type: "audio",
           title: at.title || `Audio ${idx + 1}`,
           lang: at.language || "",
           codec: at.codec_name || "",
-          selected: at.is_default || idx === 0,
+          selected: idx === defaultAudioIndex,
           external: false,
         }));
+        this.hasProbedAudioTracks = audioTracks.length > 0;
 
         subtitleTracks = probeResult.subtitle_tracks.map((st, idx) => ({
           id: st.index,
@@ -1434,7 +1443,7 @@ export class HtmlVideoEngine implements PlayerEngine {
             (formatName === "webm" && !formatName.includes("matroska")));
 
         const canDirectPlay =
-          (isLocal && !isMatroska && videoSupported && audioSupported) ||
+          (isLocal && !hasMultipleAudio && !isMatroska && videoSupported && audioSupported) ||
           (!isMatroska &&
             !hasMultipleAudio &&
             isDirectWebContainer &&
@@ -2171,7 +2180,7 @@ export class HtmlVideoEngine implements PlayerEngine {
         }
 
         const vAudioTracks = (this.video as any).audioTracks;
-        if (vAudioTracks && vAudioTracks.length > 0 && id < vAudioTracks.length) {
+        if (!this.hasProbedAudioTracks && vAudioTracks && vAudioTracks.length > 0 && id >= 0 && id < vAudioTracks.length) {
           for (let i = 0; i < vAudioTracks.length; i++) {
             vAudioTracks[i].enabled = i === id;
           }
