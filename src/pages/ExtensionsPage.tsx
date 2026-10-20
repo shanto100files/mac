@@ -289,7 +289,7 @@ export const ExtensionsPage: React.FC = () => {
 
   const handleAddSource = () => {
     if (!inputValue.trim()) {
-      setError("Enter a GitHub author, a repo URL or an https manifest URL.");
+      setError("Enter a GitHub author, a repo URL or an HTTP or HTTPS manifest URL.");
       return;
     }
 
@@ -301,7 +301,7 @@ export const ExtensionsPage: React.FC = () => {
           setError("Enter a valid access token.");
           return;
         }
-        // GitHub raw files and custom https sources take a token; the other
+        // GitHub raw files and custom HTTP/HTTPS sources take a token; the other
         // hosts use their own auth schemes.
         if (
           !source.url.startsWith("https://raw.githubusercontent.com/") &&
@@ -346,7 +346,7 @@ export const ExtensionsPage: React.FC = () => {
       setError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Enter a GitHub author, a repo URL or an https manifest URL.",
+          : "Enter a GitHub author, a repo URL or an HTTP or HTTPS manifest URL.",
       );
     }
   };
