@@ -1247,6 +1247,7 @@ const DesktopPlayer: React.FC<any> = ({
 
   useMediaSession({
     enabled: mpv.isInitialized && Boolean(selectedStream?.link),
+    needsAudioCarrier: useMpvEngine,
     title:
       state.type === "series"
         ? activeEpisode?.title || state.primaryTitle
@@ -1269,14 +1270,25 @@ const DesktopPlayer: React.FC<any> = ({
   });
 
   useEffect(() => {
-    document.documentElement.style.background = "transparent";
-    document.body.style.background = "transparent";
     const root = document.getElementById("root");
-    if (root) root.style.background = "transparent";
+    const elements = [document.documentElement, document.body, root].filter(
+      (element): element is HTMLElement => element !== null,
+    );
+    const previousBackgrounds = elements.map((element) => element.style.background);
+    // Only mpv draws behind the WebView. Built-in video stays on an opaque
+    // surface instead of compositing the whole page over a transparent root.
+    for (const element of elements) {
+      element.style.background = useMpvEngine ? "transparent" : "#000";
+    }
     return () => {
-      document.documentElement.style.background = "";
-      document.body.style.background = "";
-      if (root) root.style.background = "";
+      elements.forEach((element, index) => {
+        element.style.background = previousBackgrounds[index];
+      });
+    };
+  }, [useMpvEngine]);
+
+  useEffect(() => {
+    return () => {
       const win = getCurrentWindow();
       const previousState = preFullscreenStateRef.current;
       void (async () => {

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 interface UseMediaSessionOptions {
   enabled: boolean;
+  needsAudioCarrier?: boolean;
   title: string;
   artist?: string;
   album?: string;
@@ -60,6 +61,7 @@ const createSilentAudioUrl = () => {
 
 export const useMediaSession = ({
   enabled,
+  needsAudioCarrier = false,
   title,
   artist,
   album,
@@ -77,7 +79,9 @@ export const useMediaSession = ({
   const carrierRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (!getMediaSession() || typeof Audio === "undefined") return;
+    // HTML video already owns a media pipeline. The silent carrier is needed
+    // only for native mpv, which plays outside the WebView.
+    if (!enabled || !needsAudioCarrier || !getMediaSession() || typeof Audio === "undefined") return;
 
     const sourceUrl = createSilentAudioUrl();
     const carrier = new Audio(sourceUrl);
@@ -94,7 +98,7 @@ export const useMediaSession = ({
       URL.revokeObjectURL(sourceUrl);
       carrierRef.current = null;
     };
-  }, []);
+  }, [enabled, needsAudioCarrier]);
 
   useEffect(() => {
     const carrier = carrierRef.current;
@@ -133,7 +137,7 @@ export const useMediaSession = ({
       window.removeEventListener("pointerdown", resume, true);
       window.removeEventListener("keydown", resume, true);
     };
-  }, [enabled, isPaused]);
+  }, [enabled, isPaused, needsAudioCarrier]);
 
   useEffect(() => {
     const mediaSession = getMediaSession();

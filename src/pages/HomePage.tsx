@@ -16,6 +16,10 @@ import { PostCardItem } from "../components/home/PostCardItem";
 import { Spinner } from "../components/ui/spinner";
 import "./HomePage.css";
 import "../pages/SearchPage.css";
+import useLocalContentStore from '../lib/zustand/localContentStore';
+import {localContentId, localContentInfo, localContentLink} from '../lib/localContent/library';
+import {getLocalContinueWatching} from '../lib/localContent/playback';
+import {cacheStorage} from '../lib/storage';
 
 export const HomePage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -43,9 +47,12 @@ export const HomePage: React.FC = () => {
   } = useSearch(query, provider?.value, !!query);
 
   const history = useWatchHistoryStore((state) => state.history);
+  const localTitles = useLocalContentStore(state => state.titles);
   const removeHistoryPost = useCallback((post: {link: string}, e: React.MouseEvent) => {
     e.stopPropagation();
-    useWatchHistoryStore.getState().removeItem({link: post.link} as any);
+    const localId = localContentId(post.link);
+    if (localId) useLocalContentStore.getState().clearPlayback(localId);
+    else useWatchHistoryStore.getState().removeItem({link: post.link} as any);
   }, []);
   // Read on mount: Settings is a separate route, so Home remounts after a change.
   const [showContinueWatching] = React.useState(() =>
@@ -70,14 +77,24 @@ export const HomePage: React.FC = () => {
         });
       });
     }
-    history
-      .filter((item) => item.provider !== "local")
+    const localHistory = localTitles.flatMap(title => {
+      const target = getLocalContinueWatching(title, uri => {
+        try { return JSON.parse(cacheStorage.getString(uri) || 'null') || undefined; } catch { return undefined; }
+      });
+      if (!target) return [];
+      return [{id: localContentLink(title.id), link: localContentLink(title.id),
+        title: title.metadata?.title || title.name, provider: 'local',
+        poster: title.metadata?.poster || title.metadata?.background,
+        progress: target.position, duration: target.duration,
+        timestamp: target.updatedAt, episodeTitle: target.title,
+        isSeries: localContentInfo(title).type === 'series'}];
+    });
+    [...history.filter(item => item.provider !== 'local'), ...localHistory]
       .filter(
         (item) =>
           item.progress !== undefined &&
           item.duration !== undefined &&
-          item.progress > 0 &&
-          item.duration > 0,
+          (item.provider === 'local' || (item.progress > 0 && item.duration > 0)),
       )
       .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       .forEach((item) => {
@@ -97,7 +114,7 @@ export const HomePage: React.FC = () => {
             : undefined) ||
           item.poster ||
           "",
-        progress: Math.min(item.progress! / item.duration!, 1),
+        progress: item.duration! > 0 ? Math.min(item.progress! / item.duration!, 1) : 0,
         providerValue: item.provider,
         type: item.isSeries ? "series" : "movie",
         episodeTitle:
@@ -106,15 +123,18 @@ export const HomePage: React.FC = () => {
             ? item.episode.title
             : undefined),
       }));
-  }, [history, homeData, provider?.value]);
+  }, [history, homeData, provider?.value, localTitles]);
 
   if (!installedProviders || installedProviders.length === 0) {
     return (
+      <div className="home-page" style={{paddingTop: 80}}>
+        {showContinueWatching && continueWatchingPosts.length > 0 && <ContentSlider title="Continue Watching" posts={continueWatchingPosts} onRemove={removeHistoryPost} />}
       <div className="empty-state">
         <h2 className="headline-lg">Welcome to Vega</h2>
         <p className="body-lg text-muted">
           Please install an extension to get started.
         </p>
+      </div>
       </div>
     );
   }

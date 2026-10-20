@@ -15,6 +15,7 @@ import { EpisodeDetailsDialog, type EpisodeDetails } from "../components/content
 import { EpisodeRow } from "../components/content/EpisodeRow";
 import { InfoStoryDialog } from "../components/content/InfoStoryDialog";
 import { ResumeButton, type ResumeTarget } from "../components/content/ResumeButton";
+import {LocalResumeButton} from '../components/content/LocalResumeButton';
 import { LibraryCollectionDialog } from "../components/library/LibraryCollectionDialog";
 import { SeasonSelector } from "../components/content/SeasonSelector";
 import { DownloadServerDialog } from "../components/DownloadServerDialog";
@@ -773,7 +774,7 @@ export const MetaPage: React.FC = () => {
       )}
     </FocusableButton>
   ) : null;
-  const resumeButton = resumeTarget ? <ResumeButton target={resumeTarget} onPress={handleResume} /> : null;
+  const resumeButton = localTitle ? <LocalResumeButton title={localTitle} /> : resumeTarget ? <ResumeButton target={resumeTarget} onPress={handleResume} /> : null;
 
   return (
     <FocusContext.Provider value={focusKey}>

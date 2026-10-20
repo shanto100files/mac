@@ -1,5 +1,7 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { cacheStorage, mainStorage } from "../storage";
+import {localContentId} from '../localContent/library';
+import useLocalContentStore from '../zustand/localContentStore';
 
 interface UsePlayerProgressOptions {
   activeEpisode: any;
@@ -17,6 +19,22 @@ export const usePlayerProgress = ({
   const videoPositionRef = useRef({ position: 0, duration: 0 });
   const lastSavedPositionRef = useRef(0);
   const lastHistoryPositionRef = useRef(0);
+  const localId = routeParams?.localContent ? localContentId(routeParams.infoUrl || '') : undefined;
+  const saveLocalProgress = useCallback((position: number, duration: number) => {
+    if (!localId || !activeEpisode?.link || !Number.isFinite(position) || position < 0 || !Number.isFinite(duration) || duration <= 0) return;
+    cacheStorage.setString(activeEpisode.link, JSON.stringify({position, duration}));
+    useLocalContentStore.getState().savePlayback(localId, activeEpisode.link, position, duration);
+  }, [localId, activeEpisode?.link]);
+
+  useEffect(() => {
+    if (!localId) return;
+    videoPositionRef.current = {position: 0, duration: 0};
+    lastSavedPositionRef.current = 0;
+    return () => {
+      const {position, duration} = videoPositionRef.current;
+      saveLocalProgress(position, duration);
+    };
+  }, [localId, saveLocalProgress]);
 
   // Memoized progress handler
   const handleProgress = useCallback(
@@ -73,6 +91,7 @@ export const usePlayerProgress = ({
             duration: seekableDuration,
           }),
         );
+        saveLocalProgress(currentTime, seekableDuration);
         lastSavedPositionRef.current = currentTime;
       }
     },
@@ -86,6 +105,7 @@ export const usePlayerProgress = ({
       routeParams.secondaryTitle,
       updatePlaybackInfo,
       playbackRate,
+      saveLocalProgress,
     ],
   );
 

@@ -9,7 +9,7 @@ const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
 
-function fixture() {
+function fixture(userAgent = "") {
   let probe = {
     duration: 120, format_name: "mov,mp4",
     video_tracks: [{ index: 0, codec_name: "h264", width: 1920, height: 1080 }],
@@ -39,7 +39,9 @@ function fixture() {
     },
     AbortController, setTimeout, clearTimeout,
     console: { info() {}, warn() {}, error() {} },
-    window: {}, document: { createElement: () => ({ canPlayType: () => "probably" }) },
+    navigator: { userAgent },
+    window: { MediaSource: {} }, MediaSource: { isTypeSupported: () => true },
+    document: { createElement: () => ({ canPlayType: () => "probably" }) },
   });
   const Engine = module.exports.HtmlVideoEngine;
   // Keep the real load, metadata listener and track-selection behavior. Only
@@ -62,6 +64,54 @@ function fixture() {
   engine.startStream = async (time, resume) => starts.push({ time, resume, audio: engine.selectedAudioIndex });
   return { engine, video, starts, metadata: () => events.get("loadedmetadata")(), setProbe: (value) => { probe = value; } };
 }
+
+function hevcProbe({ profile = "Main 10", bitDepth = 10 } = {}) {
+  return {
+    duration: 120, format_name: "matroska,webm",
+    video_tracks: [{ index: 0, codec_name: "hevc", profile, bit_depth: bitDepth, width: 1920, height: 1080 }],
+    audio_tracks: [{ index: 1, codec_name: "aac", is_default: true }],
+    subtitle_tracks: [], chapters: [],
+  };
+}
+
+test("Linux Main 10 keeps native playback when MediaSource advertises support", async () => {
+  const { engine, setProbe } = fixture("Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15");
+  setProbe(hevcProbe());
+  await engine.load("/media/show/episode.mkv", { autoPlay: false });
+  assert.equal(engine.playbackMode, "remux");
+});
+
+test("Linux does not force a transcode based on HEVC profile or bit depth alone", async () => {
+  for (const metadata of [{ profile: "Main 10", bitDepth: undefined }, { profile: "", bitDepth: 10 }]) {
+    const { engine, setProbe } = fixture("Linux x86_64");
+    const probe = hevcProbe(metadata);
+    if (metadata.bitDepth === undefined) delete probe.video_tracks[0].bit_depth;
+    setProbe(probe);
+    await engine.load("/media/show/episode.mkv", { autoPlay: false });
+    assert.equal(engine.playbackMode, "remux");
+  }
+});
+
+test("Linux 8-bit HEVC and H.264 retain the remux path", async () => {
+  const { engine, setProbe } = fixture("Linux x86_64");
+  setProbe(hevcProbe({ profile: "Main", bitDepth: 8 }));
+  await engine.load("/media/show/episode.mkv", { autoPlay: false });
+  assert.equal(engine.playbackMode, "remux");
+  const probe = hevcProbe({ profile: "High", bitDepth: 8 });
+  probe.video_tracks[0].codec_name = "h264";
+  setProbe(probe);
+  await engine.load("/media/show/episode2.mkv", { autoPlay: false });
+  assert.equal(engine.playbackMode, "remux");
+});
+
+test("Windows, macOS and Android keep their existing Main 10 capability decisions", async () => {
+  for (const userAgent of ["Windows NT 10.0", "Macintosh; Intel Mac OS X", "Linux; Android 14"]) {
+    const { engine, setProbe } = fixture(userAgent);
+    setProbe(hevcProbe());
+    await engine.load("episode.mkv", { autoPlay: false });
+    assert.equal(engine.playbackMode, "remux");
+  }
+});
 
 test("local MP4 keeps both container audio tracks when WebKit exposes one", async () => {
   const { engine, metadata } = fixture();

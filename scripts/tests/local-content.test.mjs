@@ -66,6 +66,12 @@ function fixture() {
     providerEpisodes: load(resolve(root, "providerEpisodeMetadata.ts")),
     metadata: load(resolve(root, "localContent/metadata.ts")),
     model: load(resolve(root, "localContent/model.ts")),
+    playback: load(resolve(root, "localContent/playback.ts")),
+    reloadLocal: () => {
+      const path = resolve(root, 'zustand/localContentStore.ts');
+      cache.delete(path);
+      return load(path).default;
+    },
     library: load(resolve(root, "localContent/library.ts")),
     local: load(resolve(root, "zustand/localContentStore.ts")).default,
     watchlist: load(resolve(root, "zustand/watchListStore.ts")).default,
@@ -318,4 +324,62 @@ test("provider matches persist per provider and title and preserve playback info
   store.getState().setMetadata("provider", "link");
   assert.deepEqual(store.getState().overrides, {});
   assert.equal(applyMetadataOverride(info), info);
+});
+
+test('local playback survives restart and metadata edits without entering shared watch history', () => {
+  const {local, playback, reloadLocal, values} = fixture();
+  const initialKeys = new Set(values.keys());
+  local.getState().saveTitles([structuredClone(localTitle)]);
+  const uri = localTitle.episodes[0].uri;
+  local.getState().savePlayback(localTitle.id, uri, 120, 1200);
+  local.getState().saveTitles([{...structuredClone(localTitle), name: 'Renamed'}]);
+  const restored = reloadLocal().getState().titles[0];
+  assert.equal(restored.playback.position, 120);
+  assert.equal(restored.playback.episodeUri, uri);
+  assert.equal(playback.getLocalResume(restored).mode, 'resume');
+  assert.deepEqual([...values.keys()].filter(key => !initialKeys.has(key)), ['device-local-content-v1']);
+  local.getState().clearPlayback(localTitle.id);
+  assert.equal(local.getState().titles[0].playback, undefined);
+  assert.equal(local.getState().titles[0].episodes.length, 1);
+});
+
+test('local resume advances between season folders and routes directly to the matching file', () => {
+  const {playback} = fixture();
+  const title = structuredClone(localTitle);
+  title.episodes.push({uri: 'D:/Show/S02E01.mkv', name: 'S02E01.mkv', folder: 'Season 02', season: 2, episode: 1});
+  title.playback = playback.createLocalPlayback(title, title.episodes[0].uri, 99, 100);
+  const target = playback.getLocalResume(title);
+  assert.equal(target.mode, 'next');
+  assert.equal(target.seasonTitle, 'Season 02');
+  const params = playback.getLocalPlayerParams(title, target.episode.uri);
+  assert.equal(params.localContent, true);
+  assert.equal(params.providerValue, 'local');
+  assert.equal(params.linkIndex, 0);
+  assert.equal(params.episodeList[0].link, 'D:/Show/S02E01.mkv');
+  assert.equal(params.episodeList[0].localFile, true);
+});
+
+test('local movies finish cleanly and missing files or invalid timelines cannot create history', () => {
+  const {playback} = fixture();
+  const title = structuredClone(localTitle);
+  title.metadata.type = 'movie';
+  title.playback = playback.createLocalPlayback(title, title.episodes[0].uri, 99, 100);
+  assert.equal(playback.getLocalResume(title), null);
+  assert.equal(playback.createLocalPlayback(title, 'deleted', 10, 100), undefined);
+  assert.equal(playback.createLocalPlayback(title, title.episodes[0].uri, Infinity, 100), undefined);
+  assert.equal(playback.createLocalPlayback(title, title.episodes[0].uri, 10, 0), undefined);
+  assert.equal(playback.getLocalPlayerParams(title, 'deleted'), null);
+});
+
+test('cached local progress appears without a fake timestamp and clearing it does not lose the resume point', () => {
+  const {local, playback} = fixture();
+  const title = structuredClone(localTitle);
+  const read = () => ({position: 20, duration: 100});
+  assert.equal(playback.getLocalContinueWatching(title, read).updatedAt, 0);
+  local.getState().saveTitles([title]);
+  local.getState().clearPlayback(title.id);
+  assert.equal(playback.getLocalContinueWatching(local.getState().titles[0], read), null);
+  assert.equal(playback.getLocalResume(local.getState().titles[0], read).position, 20);
+  local.getState().savePlayback(title.id, title.episodes[0].uri, 30, 100);
+  assert.equal(playback.getLocalContinueWatching(local.getState().titles[0], read).position, 30);
 });
