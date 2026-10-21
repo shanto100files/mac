@@ -44,6 +44,7 @@ export interface PlayerEngineState {
 
 export interface PlayerEngineOptions {
   headers?: Record<string, string>;
+  streamType?: string;
   startTime?: number;
   autoPlay?: boolean;
   audioIndex?: number;

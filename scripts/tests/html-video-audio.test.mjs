@@ -8,8 +8,13 @@ const source = readFileSync(new URL("../../src/lib/player/HtmlVideoEngine.ts", i
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText;
+const hlsModule = {exports: {}};
+const hlsSourceCode = ts.transpileModule(readFileSync(new URL("../../src/lib/player/hlsSource.ts", import.meta.url), "utf8"), {
+  compilerOptions: {module: ts.ModuleKind.CommonJS},
+}).outputText;
+runInNewContext(hlsSourceCode, {module: hlsModule, exports: hlsModule.exports});
 
-function fixture(userAgent = "") {
+function fixture(userAgent = "", supportsHls = false) {
   let probe = {
     duration: 120, format_name: "mov,mp4",
     video_tracks: [{ index: 0, codec_name: "h264", width: 1920, height: 1080 }],
@@ -22,7 +27,8 @@ function fixture(userAgent = "") {
   const module = { exports: {} };
   const mocks = {
     "@tauri-apps/api/core": { invoke: async (name) => name === "probe_media_info" ? probe : undefined },
-    "hls.js": { default: { isSupported: () => false } },
+    "hls.js": { __esModule: true, default: { isSupported: () => supportsHls } },
+    "./hlsSource": hlsModule.exports,
     "./jassubManager": { JassubManager: class {} },
     "./deviceProfile": { isLowEndDevice: () => false },
     "./mseCodec": { modernMseMime: () => null },
@@ -61,9 +67,38 @@ function fixture(userAgent = "") {
   const engine = new Engine(video);
   engine.jassub = null;
   const starts = [];
+  const hlsStarts = [];
   engine.startStream = async (time, resume) => starts.push({ time, resume, audio: engine.selectedAudioIndex });
-  return { engine, video, starts, metadata: () => events.get("loadedmetadata")(), setProbe: (value) => { probe = value; } };
+  engine.startHlsStream = async (source, options) => hlsStarts.push({source, options});
+  return { engine, video, starts, hlsStarts, metadata: () => events.get("loadedmetadata")(), setProbe: (value) => { probe = value; } };
 }
+
+test("provider-declared HLS with an opaque URL goes straight to HLS even when probing would fail", async () => {
+  for (const streamType of ["m3u8", "hls", "HLS", "application/vnd.apple.mpegurl"]) {
+    const {engine, starts, hlsStarts, setProbe} = fixture("", true);
+    setProbe(null);
+    const source = "https://worker.test/playlist/signed-token";
+    await engine.load(source, {streamType, autoPlay: false});
+    assert.equal(hlsStarts.length, 1);
+    assert.equal(hlsStarts[0].source, source);
+    assert.equal(hlsStarts[0].options.autoPlay, false);
+    assert.equal(starts.length, 0, "must not open the playlist as a progressive/remux video");
+  }
+});
+
+test("HLS hints handle response-type header casing and URL casing", () => {
+  assert.equal(hlsModule.exports.hasHlsHint("https://cdn.test/signed", undefined, {"Content-Type": "Application/X-MPEGURL"}), true);
+  assert.equal(hlsModule.exports.hasHlsHint("https://cdn.test/VIDEO.M3U8"), true);
+  assert.equal(hlsModule.exports.hasHlsHint("/media/episode.mkv", "mkv"), false);
+});
+
+test("a probe that identifies HLS also selects HLS for an undeclared extensionless URL", async () => {
+  const {engine, starts, hlsStarts, setProbe} = fixture("", true);
+  setProbe({format_name: "hls", duration: 0, audio_tracks: [], video_tracks: [], subtitle_tracks: [], chapters: []});
+  await engine.load("https://cdn.test/signed", {autoPlay: false});
+  assert.equal(hlsStarts.length, 1);
+  assert.equal(starts.length, 0);
+});
 
 function hevcProbe({ profile = "Main 10", bitDepth = 10 } = {}) {
   return {

@@ -1,3 +1,4 @@
+import {providerFetch} from '../lib/providers/tauriAxiosAdapter';
 import {OpenWebViewOptions, OpenWebViewResult} from '../lib/providers/types';
 import {useWafStore} from '../lib/zustand/wafStore';
 import {headers as commonHeaders} from '../lib/providers/headers';
@@ -12,10 +13,7 @@ const pickUserAgent = (
   return key ? h[key] : undefined;
 };
 
-const pendingRequests = new Map<
-  string,
-  Array<{resolve: (val: any) => void; reject: (err: any) => void}>
->();
+const pendingRequests = new Map<string, Promise<OpenWebViewResult>>();
 
 /**
  * Opens the WAF solver for a provider. Cookies are read from and saved to the
@@ -31,18 +29,32 @@ export const openWebView = async (
   }
   const author = providerAuthor(authorRaw);
 
-  const hostname = url.includes('://') ? url.split('/')[2] : url;
-  const siteKey = options?.waitForCookie ? `${hostname}:${options.waitForCookie}` : hostname;
-  const cacheKey = `${author}|${siteKey}`;
-
-  // Request Coalescing: If a WAF solver is already running for this URL,
-  // just wait for its result instead of queuing another dialog!
-  if (pendingRequests.has(cacheKey)) {
-    console.log(`[WAF] Coalescing parallel request for: ${cacheKey}`);
-    return new Promise((resolve, reject) => {
-      pendingRequests.get(cacheKey)?.push({resolve, reject});
-    });
-  }
+  const cacheKey = `${author}|${new URL(url).hostname.toLowerCase()}`;
+  const userAgent = pickUserAgent(options?.headers) || commonHeaders['User-Agent'];
+  const retryPage = async (solved?: OpenWebViewResult): Promise<OpenWebViewResult> => {
+    const retryUserAgent = solved?.userAgent || userAgent;
+    const headers = Object.fromEntries(Object.entries(options?.headers || {}).filter(
+      ([name]) => !['cookie', 'user-agent'].includes(name.toLowerCase()),
+    ));
+    headers['User-Agent'] = retryUserAgent;
+    const response = await providerFetch(author, url, {headers});
+    if (!response.ok) throw new Error(`WAF retry failed: HTTP ${response.status}`);
+    const data = await response.text();
+    const cookieMap = getJarCookieMap(author, response.url || url);
+    const cookies = Object.entries(cookieMap).map(([k, v]) => `${k}=${v}`).join('; ');
+    return {data, cookies, cookie: cookies, cookieMap, url: response.url || url, userAgent: retryUserAgent};
+  };
+  const afterDismissal = async (error: unknown): Promise<OpenWebViewResult> => {
+    if (!(error instanceof Error) || error.message !== 'WAF_DIALOG_CANCELLED') throw error;
+    // Dismissal permits one silent HTTP retry, never another dialog.
+    try {
+      return await retryPage();
+    } catch {
+      throw error;
+    }
+  };
+  const pending = pendingRequests.get(cacheKey);
+  if (pending) return pending.then(retryPage, afterDismissal);
 
   // Handle force and fast path
   if (!options?.force && options?.waitForCookie) {
@@ -67,39 +79,17 @@ export const openWebView = async (
     deleteJarCookie(author, url, options.waitForCookie);
   }
 
-  pendingRequests.set(cacheKey, []);
-
-  // Use common headers if not provided
-  if (!options) options = {};
-  if (!options.headers) options.headers = {};
-  if (!pickUserAgent(options.headers)) {
-    options.headers['User-Agent'] = commonHeaders['User-Agent'];
-  }
-
-  return new Promise((resolve, reject) => {
-    console.log('[WAF] Queuing new solver for:', url);
-
-    // WafDialog saves the solved cookies to the author's jar.
-    const wrappedResolve = (result: OpenWebViewResult) => {
-      resolve(result);
-      const pending = pendingRequests.get(cacheKey) || [];
-      pendingRequests.delete(cacheKey);
-      pending.forEach(p => p.resolve(result));
-    };
-
-    const wrappedReject = (error: any) => {
-      reject(error);
-      const pending = pendingRequests.get(cacheKey) || [];
-      pendingRequests.delete(cacheKey);
-      pending.forEach(p => p.reject(error));
-    };
-
+  const promise = new Promise<OpenWebViewResult>((resolve, reject) => {
     useWafStore.getState().enqueue({
       ...options,
-      url,
-      author,
-      resolve: wrappedResolve,
-      reject: wrappedReject,
+      headers: {...options?.headers, 'User-Agent': userAgent},
+      url, author, resolve, reject,
     });
   });
+  pendingRequests.set(cacheKey, promise);
+  const cleanup = () => {
+    if (pendingRequests.get(cacheKey) === promise) pendingRequests.delete(cacheKey);
+  };
+  promise.then(cleanup, cleanup);
+  return promise.catch(afterDismissal);
 };

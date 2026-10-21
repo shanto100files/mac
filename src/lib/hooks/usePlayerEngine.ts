@@ -132,6 +132,7 @@ export function usePlayerEngine(
         engine
           .load(pending.source, {
             headers: pending.headers,
+            streamType: pending.streamType,
             subtitles: pending.subtitles,
             autoPlay: true,
             speed: pending.speed || currentSpeedRef.current,
@@ -256,6 +257,7 @@ export function usePlayerEngine(
       try {
         await engine.load(source, {
           headers,
+          streamType,
           subtitles,
           autoPlay: true,
           speed: currentSpeedRef.current,

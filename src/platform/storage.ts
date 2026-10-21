@@ -22,6 +22,7 @@ export interface IStorageService {
  */
 export class StorageService implements IStorageService {
   private prefix: string;
+  private cacheWriteWarningReported = false;
 
   constructor(instanceId?: string) {
     this.prefix = instanceId ? `${instanceId}_` : '';
@@ -37,7 +38,48 @@ export class StorageService implements IStorageService {
   }
 
   setString(key: string, value: string): void {
-    localStorage.setItem(this.getKey(key), value);
+    const fullKey = this.getKey(key);
+    try {
+      localStorage.setItem(fullKey, value);
+      return;
+    } catch (error) {
+      let failure = error;
+      const storageError = error as {name?: string; code?: number} | null;
+      const quotaExceeded = storageError && (
+        storageError.name === 'QuotaExceededError' ||
+        storageError.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+        storageError.code === 22 || storageError.code === 1014
+      );
+      if (quotaExceeded) {
+        try {
+          // Cache and durable data share the origin's quota. Evict only
+          // disposable cache entries, never settings, history or provider data.
+          const cacheKeys: string[] = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const cachedKey = localStorage.key(i);
+            if (cachedKey?.startsWith('cache_')) cacheKeys.push(cachedKey);
+          }
+          if (cacheKeys.length > 0) {
+            cacheKeys.forEach(cachedKey => localStorage.removeItem(cachedKey));
+            localStorage.setItem(fullKey, value);
+            return;
+          }
+        } catch (retryError) {
+          failure = retryError;
+        }
+      }
+      if (this.prefix === 'cache_') {
+        // A cache entry can exceed the entire quota, or storage can be denied.
+        // Fetched data is still usable; optional persistence must not crash React.
+        if (!this.cacheWriteWarningReported) {
+          console.warn('[Storage] Cache persistence unavailable; continuing without it.', failure);
+          this.cacheWriteWarningReported = true;
+        }
+        return;
+      }
+      // Never silently report success when saving durable user data failed.
+      throw failure;
+    }
   }
 
   // Boolean operations
@@ -50,7 +92,7 @@ export class StorageService implements IStorageService {
   }
 
   setBool(key: string, value: boolean): void {
-    localStorage.setItem(this.getKey(key), value ? 'true' : 'false');
+    this.setString(key, value ? 'true' : 'false');
   }
 
   // Number operations
@@ -62,7 +104,7 @@ export class StorageService implements IStorageService {
   }
 
   setNumber(key: string, value: number): void {
-    localStorage.setItem(this.getKey(key), String(value));
+    this.setString(key, String(value));
   }
 
   // Object operations
@@ -80,7 +122,7 @@ export class StorageService implements IStorageService {
   }
 
   setObject<T>(key: string, value: T): void {
-    localStorage.setItem(this.getKey(key), JSON.stringify(value));
+    this.setString(key, JSON.stringify(value));
   }
 
   // Array operations

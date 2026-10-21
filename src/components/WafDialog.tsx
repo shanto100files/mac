@@ -130,12 +130,12 @@ export const WafDialog: React.FC = () => {
   }, []);
 
   const finalizeResolve = useCallback(
-    async (req: WafRequest, data?: string) => {
+    async (req: WafRequest, data?: string, dismissed = false) => {
       cleanup();
       try {
         // Page response like mobile: the injected script's payload, else the
         // rendered HTML of the page.
-        const pageData = data ?? (await wafEval<string>(GRAB_HTML_JS)) ?? '';
+        const pageData = dismissed ? '' : data ?? (await wafEval<string>(GRAB_HTML_JS)) ?? '';
         const cookiesRaw = await invoke<CookieInfo[]>('get_cookies_for_url', {
           webviewLabel: WAF_WEBVIEW_LABEL,
           url: req.url,
@@ -175,9 +175,11 @@ export const WafDialog: React.FC = () => {
           userAgent: req.headers?.['User-Agent'] || '',
           expires: expiresAt || undefined,
         };
-        req.resolve(result);
+        if (dismissed) req.reject(new Error('WAF_DIALOG_CANCELLED'));
+        else req.resolve(result);
       } catch (e) {
         req.reject(
+          dismissed ? new Error('WAF_DIALOG_CANCELLED') :
           e instanceof Error ? e : new Error('Failed to read cookies'),
         );
       } finally {
@@ -191,11 +193,8 @@ export const WafDialog: React.FC = () => {
   const cancel = useCallback(() => {
     if (!request || settledRef.current) return;
     settledRef.current = true;
-    cleanup();
-    request.reject(new Error('WAF_DIALOG_CANCELLED'));
-    remove(request.id);
-    closeWebview();
-  }, [request, remove, closeWebview, cleanup]);
+    void finalizeResolve(request, undefined, true);
+  }, [request, finalizeResolve]);
 
   const resolveWithPage = useCallback(() => {
     if (!request || settledRef.current) return;
@@ -256,8 +255,9 @@ export const WafDialog: React.FC = () => {
       });
 
       // Closing the popup = cancel, like mobile's close button
-      webview.onCloseRequested(() => {
+      webview.onCloseRequested(event => {
         if (!settledRef.current) {
+          event.preventDefault();
           cancel();
         }
       });

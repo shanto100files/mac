@@ -1,5 +1,6 @@
 import {pumpMseStream} from "./mseBufferPump";
 import {modernMseMime} from "./mseCodec";
+import {hasHlsHint} from "./hlsSource";
 import { invoke } from "@tauri-apps/api/core";
 import Hls from "hls.js";
 import type {
@@ -1290,10 +1291,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       speed: this.playbackSpeed,
     });
 
-    const isHls =
-      source.includes(".m3u8") ||
-      source.includes("m3u8") ||
-      (this.currentHeaders["content-type"] || "").includes("mpegurl");
+    const isHls = hasHlsHint(source, options?.streamType, this.currentHeaders);
 
     if (isHls && Hls.isSupported()) {
       await this.startHlsStream(source, options);
@@ -1309,6 +1307,11 @@ export class HtmlVideoEngine implements PlayerEngine {
         return null;
       });
       if (this.loadRequestId !== currentLoadId || this.isDestroyed) return;
+
+      if (probeResult?.format_name?.split(',').includes('hls') && Hls.isSupported()) {
+        await this.startHlsStream(source, options);
+        return;
+      }
 
       let audioTracks: TrackInfo[] = [];
       let subtitleTracks: TrackInfo[] = [];
