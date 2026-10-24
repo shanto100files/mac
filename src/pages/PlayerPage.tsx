@@ -273,7 +273,7 @@ const formatTrackLabel = (track: {
     language &&
     title.toLocaleLowerCase() !== language.toLocaleLowerCase()
   ) {
-    return `${title} · ${language.toUpperCase()}`;
+    return `${title} Â· ${language.toUpperCase()}`;
   }
   return title || language?.toUpperCase() || `Track ${track.id}`;
 };
@@ -617,10 +617,10 @@ const TvPlayer: React.FC<any> = ({
               <div className="loading-spinner" />
               <span>
                 {isAndroid && useExternalPlayer
-                  ? "Opening app chooser…"
+                  ? "Opening app chooserâ€¦"
                   : isAndroid
-                    ? "Opening Vega player…"
-                    : "Opening VLC…"}
+                    ? "Opening Vega playerâ€¦"
+                    : "Opening VLCâ€¦"}
               </span>
             </div>
           ) : (
@@ -1168,9 +1168,8 @@ const DesktopPlayer: React.FC<any> = ({
   // Engine is chosen once per player session (Settings > Player). Both hooks
   // are always called; the unused one stays idle (no <video> to bind, no
   // initPlayer call).
-  const [useMpvEngine, setUseMpvEngine] = useState(
-    () => settingsStorage.getPlayerEngine() === "mpv",
-  );
+  const [selectedEngine, setSelectedEngine] = useState(() => settingsStorage.getPlayerEngine());
+  const useMpvEngine = selectedEngine === "mpv";
   const engineOptions: Parameters<typeof usePlayerEngine>[1] = {
     onError: handlePlaybackError,
     onFileLoaded: () => {
@@ -1201,6 +1200,7 @@ const DesktopPlayer: React.FC<any> = ({
   const builtinPlayer = usePlayerEngine(
     useMpvEngine ? undefined : videoRef,
     engineOptions,
+    selectedEngine === "libmedia" ? "libmedia" : "builtin",
   );
   const mpvPlayer = useMpvPlayer(engineOptions);
   const mpv = useMpvEngine ? mpvPlayer : builtinPlayer;
@@ -1211,7 +1211,7 @@ const DesktopPlayer: React.FC<any> = ({
     if (!useMpvEngine || !mpvPlayer.initializationError) return;
     console.warn("[PlayerPage] mpv unavailable:", mpvPlayer.initializationError);
     toast("mpv player could not start. Using the built-in player.", 3500);
-    setUseMpvEngine(false);
+    setSelectedEngine("builtin");
   }, [useMpvEngine, mpvPlayer.initializationError, toast]);
 
   useEffect(() => {
@@ -2218,13 +2218,10 @@ const DesktopPlayer: React.FC<any> = ({
       {...(isPip ? { "data-tauri-drag-region": true } : {})}
     >
       {!useMpvEngine && (
-        <div className="player-video-wrapper">
+        <div className="player-video-wrapper" style={{transform:zoomLevel!==100?`scale(${zoomLevel/100})`:undefined}}>
           <video
             ref={mpv.bindVideo}
             className={`player-video-element ${isCropped ? "cropped" : ""}`}
-            style={{
-              transform: zoomLevel !== 100 ? `scale(${zoomLevel / 100})` : undefined,
-            }}
             playsInline
           />
         </div>
@@ -2391,6 +2388,7 @@ const DesktopPlayer: React.FC<any> = ({
           videoTracks={mpv.videoTracks}
           audioDelay={mpv.audioDelay}
           onAudioDelayChange={(delayMs) => {
+            if(selectedEngine === "libmedia"){toast("Audio sync adjustment is unavailable with Libmedia.");return;}
             mpv.setAudioDelay?.(delayMs);
             toast(`Audio Sync: ${delayMs > 0 ? `+${delayMs}` : delayMs}ms`);
           }}

@@ -13,6 +13,7 @@ import { arch, platform, tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { windowsBinaryMatches } from "./windows-binary.mjs";
+import { systemMediaDependencies } from "./linux-media-dependencies.mjs";
 
 const releaseTag = "b6.1.2-rc.1";
 const windowsArm = platform() === "win32" && arch() === "arm64";
@@ -27,6 +28,18 @@ const destination = join(root, "src-tauri", "resources", "ffmpeg-sidecar");
 const executableSuffix = platform() === "win32" ? ".exe" : "";
 
 function verifyBinary(path, tool) {
+  if (platform() === "linux") {
+    // A system libavutil/libva mismatch must not break our shipped media tools.
+    // Check the ELF itself: -version alone can miss lazily resolved symbols.
+    const dynamic = spawnSync("readelf", ["--dynamic", "--wide", path], { encoding: "utf8" });
+    if (dynamic.status !== 0) {
+      throw new Error(`${tool} ELF inspection failed: ${dynamic.error?.message || dynamic.stderr}`);
+    }
+    const mediaDependencies = systemMediaDependencies(dynamic.stdout);
+    if (mediaDependencies.length) {
+      throw new Error(`${tool} must bundle its media libraries; found system dependencies: ${mediaDependencies.join(", ")}`);
+    }
+  }
   if (platform() === "win32" && !windowsBinaryMatches(path, arch())) {
     throw new Error(`${tool} does not match Windows ${arch()}`);
   }

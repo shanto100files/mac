@@ -49,3 +49,11 @@ src-tauri/resources/ffmpeg-sidecar/*
 .build_ffmpeg_android/
 scratch/
 src-tauri/lib/*.dll
+
+# Generated shared libmedia runtime chunks
+/public/*.avplayer.js
+/public/assets/*.avplayer.js
+
+/desktop-libmedia-*.log
+/test-results/
+/playwright-report/

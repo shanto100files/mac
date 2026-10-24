@@ -4,7 +4,7 @@ import { mainStorage } from "./StorageService";
 /**
  * Storage keys for settings
  */
-export type PlayerEngineKind = "builtin" | "mpv";
+export type PlayerEngineKind = "builtin" | "mpv" | "libmedia";
 
 /** Connections one download may open; servers that refuse extra ones lower it. */
 export const MIN_DOWNLOAD_CONNECTIONS = 1;
@@ -499,10 +499,9 @@ export class SettingsStorage {
    * "mpv": libmpv rendered under the transparent webview (Windows only).
    */
   getPlayerEngine(): PlayerEngineKind {
-    if (!this.isMpvEngineSupported()) return "builtin";
-    return mainStorage.getString(SettingsKeys.PLAYER_ENGINE) === "mpv"
-      ? "mpv"
-      : "builtin";
+    const saved = mainStorage.getString(SettingsKeys.PLAYER_ENGINE);
+    if (saved === "libmedia") return "libmedia";
+    return saved === "mpv" && this.isMpvEngineSupported() ? "mpv" : "builtin";
   }
 
   setPlayerEngine(engine: PlayerEngineKind): void {

@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import {libmediaChunkPlugin} from "@vega/libmedia-engine/assets";
 import tailwindcss from "@tailwindcss/vite";
 // @ts-expect-error type error without @types/node package
 import process from "node:process";
@@ -34,7 +35,8 @@ export default defineConfig(({ mode }) => {
     "";
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), libmediaChunkPlugin()],
+    optimizeDeps: {exclude:["@libmedia/avplayer"]},
     define: {
       "import.meta.env.VITE_TMDB_API_KEY": JSON.stringify(tmdbApiKey),
       "import.meta.env.VITE_PROXY_API_URL": JSON.stringify(proxyApiUrl),

@@ -70,5 +70,6 @@ export interface PlayerEngine {
   setAudioDelay?(delayMs: number): Promise<void> | void;
   setSubtitleDelay?(delayMs: number): Promise<void> | void;
   updateSubtitleSettings?(): Promise<void> | void;
+  setProperty?(property:string,value:unknown):Promise<void>|void;
   destroy(): void;
 }

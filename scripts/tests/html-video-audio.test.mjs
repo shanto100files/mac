@@ -173,6 +173,44 @@ test("switching remux audio retains container IDs and selection after metadata r
   assert.equal(starts.length, count, "selecting the active track must not restart playback");
 });
 
+test("restoring an audio preference during startup retains the pending autoplay request", async () => {
+  const {engine, video} = fixture("Linux x86_64");
+  const starts = [];
+  let releaseInitialStream;
+  const initialStream = new Promise(resolve => { releaseInitialStream = resolve; });
+  engine.startStream = async (_time, resume) => {
+    starts.push(resume);
+    if (starts.length === 1) await initialStream;
+  };
+  const loading = engine.load("/media/dual-audio.mkv", {autoPlay: true});
+  while (!starts.length) await Promise.resolve();
+  assert.equal(video.paused, true, "the element has not started yet");
+  await engine.selectTrack("aid", 1);
+  assert.deepEqual(starts, [true, true], "restoring the saved track must preserve autoplay");
+  assert.equal(engine.state.isPaused, false);
+  releaseInitialStream();
+  await loading;
+});
+
+test("a user pause during preparation cancels pending autoplay for an audio restart", async () => {
+  const {engine} = fixture("Linux x86_64");
+  const starts = [];
+  let releaseInitialStream;
+  const initialStream = new Promise(resolve => { releaseInitialStream = resolve; });
+  engine.startStream = async (_time, resume) => {
+    starts.push(resume);
+    if (starts.length === 1) await initialStream;
+  };
+  const loading = engine.load("/media/dual-audio.mkv", {autoPlay: true});
+  while (!starts.length) await Promise.resolve();
+  engine.pause();
+  await engine.selectTrack("aid", 1);
+  assert.deepEqual(starts, [true, false]);
+  releaseInitialStream();
+  await loading;
+  assert.equal(engine.state.isPaused, true);
+});
+
 test("a later unprobed source can still discover native audio tracks", async () => {
   const { engine, metadata, setProbe } = fixture();
   await engine.load("/home/user/movie.mp4", { autoPlay: false });

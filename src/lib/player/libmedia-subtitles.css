@@ -1,0 +1,20 @@
+/* Desktop customization overrides text appearance. libmedia retains cue
+   timing, line wrapping, alignment and subtitle selection. */
+.libmedia-surface .ASS-dialogue [data-text] {
+  font-family: var(--vega-sub-font-family) !important;
+  font-size: var(--vega-sub-font-size) !important;
+  font-weight: var(--vega-sub-font-weight) !important;
+  line-height: 1.2 !important;
+  color: var(--vega-sub-color) !important;
+  -webkit-text-stroke: var(--vega-sub-outline) !important;
+  paint-order: stroke fill;
+  text-shadow: var(--vega-sub-shadow) !important;
+  filter: none !important;
+}
+.libmedia-surface .ASS-dialogue [data-text]::before,
+.libmedia-surface .ASS-dialogue [data-text]::after {
+  display: none !important;
+}
+.libmedia-surface .ASS-dialogue {
+  translate: 0 calc(-1 * var(--vega-sub-padding));
+}

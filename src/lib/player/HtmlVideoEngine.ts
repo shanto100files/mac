@@ -285,6 +285,9 @@ export class HtmlVideoEngine implements PlayerEngine {
   private freezeCanvas: HTMLCanvasElement | null = null;
   private isPreparingRemuxPreroll: boolean = false;
   private isUserMuted: boolean = false;
+  // A saved audio preference can restart the stream before the first play().
+  // The temporarily paused media element does not represent the user's intent.
+  private pendingAutoplay: boolean = false;
   private seekGeneration: number = 0;
   private loadRequestId: number = 0;
   private currentTorrentInfoHash: string | null = null;
@@ -1184,6 +1187,7 @@ export class HtmlVideoEngine implements PlayerEngine {
 
   public async load(source: string, options?: PlayerEngineOptions): Promise<void> {
     const currentLoadId = ++this.loadRequestId;
+    this.pendingAutoplay = options?.autoPlay !== false;
     this.hasTriedCodecFallback = false;
     this.isCodecFallbackInProgress = false;
     this.probedHasVideo = false;
@@ -1531,7 +1535,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       );
       if (this.loadRequestId !== currentLoadId || this.isDestroyed) return;
 
-      if (options?.autoPlay !== false) {
+      if (this.pendingAutoplay) {
         await this.play().catch((e) => {
           console.warn("[HtmlVideoEngine] Autoplay prevented or delayed:", e);
           this.updateState({ isPaused: true, isBuffering: false });
@@ -2064,6 +2068,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public async play(): Promise<void> {
+    this.pendingAutoplay = false;
     this.applyPlaybackSpeed();
     this.updateState({ isPaused: false });
     try {
@@ -2078,6 +2083,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public pause(): void {
+    this.pendingAutoplay = false;
     this.video.pause();
     this.updateState({ isPaused: true, isBuffering: false });
   }
@@ -2205,10 +2211,10 @@ export class HtmlVideoEngine implements PlayerEngine {
         }
 
         const currentPos = this.state.currentTime;
-        const wasPlaying = !this.video.paused || !this.state.isPaused;
+        const wasPlaying = this.pendingAutoplay || !this.video.paused || !this.state.isPaused;
         await this.startStream(currentPos, wasPlaying);
         if (wasPlaying) {
-          await this.video.play().catch(() => { });
+          await this.play();
         }
       }
     } else if (type === "sid") {
@@ -2628,6 +2634,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public destroy(): void {
+    this.pendingAutoplay = false;
     if (this.playbackCheckTimer) clearTimeout(this.playbackCheckTimer);
     this.playbackCheckTimer = null;
     this.isDestroyed = true;

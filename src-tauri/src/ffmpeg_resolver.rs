@@ -1,5 +1,30 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::OnceLock;
+
+static RESOURCE_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// Tauri knows the installed resource location (e.g. /usr/lib/Vega on Linux).
+/// It cannot reliably be inferred from /usr/bin/vega or the working directory.
+pub fn init_resource_dir(dir: PathBuf) {
+    let _ = RESOURCE_DIR.set(dir);
+}
+
+fn resource_binary_dirs(resource_dir: &Path) -> Vec<PathBuf> {
+    vec![
+        resource_dir.join("resources").join("ffmpeg-sidecar"),
+        resource_dir.join("ffmpeg-sidecar"),
+        resource_dir.join("resources").join("ffmpeg"),
+        resource_dir.join("ffmpeg"),
+        resource_dir.to_path_buf(),
+    ]
+}
+
+fn find_binary(dirs: &[PathBuf], names: &[String]) -> Option<PathBuf> {
+    dirs.iter()
+        .flat_map(|dir| names.iter().map(move |name| dir.join(name)))
+        .find(|candidate| candidate.is_file())
+}
 
 #[cfg(target_os = "windows")]
 const FFMPEG_BIN_NAME: &str = "ffmpeg.exe";
@@ -123,6 +148,12 @@ pub fn resolve_binary(base_name: &str, env_var: &str) -> Result<PathBuf, String>
 
     let mut candidate_dirs: Vec<PathBuf> = Vec::new();
 
+    // Prefer the shipped, verified pair over unrelated system FFmpeg libraries.
+    // Explicit VEGA_FFMPEG_PATH / VEGA_FFPROBE_PATH overrides still take priority.
+    if let Some(resource_dir) = RESOURCE_DIR.get() {
+        candidate_dirs.extend(resource_binary_dirs(resource_dir));
+    }
+
     if let Ok(current_exe) = std::env::current_exe() {
         if let Some(parent) = current_exe.parent() {
             candidate_dirs.push(parent.to_path_buf());
@@ -181,13 +212,8 @@ pub fn resolve_binary(base_name: &str, env_var: &str) -> Result<PathBuf, String>
 
     let candidate_names = get_candidate_names(base_name);
 
-    for dir in &candidate_dirs {
-        for name in &candidate_names {
-            let candidate = dir.join(name);
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
+    if let Some(candidate) = find_binary(&candidate_dirs, &candidate_names) {
+        return Ok(candidate);
     }
 
     // Check system PATH explicitly to resolve canonical path
@@ -232,4 +258,43 @@ pub fn get_ffmpeg_path() -> Result<PathBuf, String> {
 
 pub fn get_ffprobe_path() -> Result<PathBuf, String> {
     resolve_binary(FFPROBE_BIN_NAME, "VEGA_FFPROBE_PATH")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn packaged_sidecars_win_over_system_binaries() {
+        let root = std::env::temp_dir().join(format!("vega-resolver-{}", std::process::id()));
+        let installed = root.join("usr/lib/Vega");
+        let bundled = installed.join("resources/ffmpeg-sidecar");
+        let system = root.join("usr/bin");
+        std::fs::create_dir_all(&bundled).unwrap();
+        std::fs::create_dir_all(&system).unwrap();
+        init_resource_dir(installed.clone());
+        for name in [FFMPEG_BIN_NAME, FFPROBE_BIN_NAME] {
+            std::fs::write(bundled.join(name), b"bundled").unwrap();
+            std::fs::write(system.join(name), b"system").unwrap();
+            let mut dirs = resource_binary_dirs(&installed);
+            dirs.push(system.clone());
+            assert_eq!(
+                find_binary(&dirs, &get_candidate_names(name)),
+                Some(bundled.join(name))
+            );
+            assert_eq!(
+                resolve_binary(name, "VEGA_RESOLVER_TEST_UNUSED_OVERRIDE").unwrap(),
+                bundled.join(name)
+            );
+        }
+        // Preserve system fallback for development/unbundled installs.
+        std::fs::remove_dir_all(&installed).unwrap();
+        let mut dirs = resource_binary_dirs(&installed);
+        dirs.push(system.clone());
+        assert_eq!(
+            find_binary(&dirs, &get_candidate_names(FFPROBE_BIN_NAME)),
+            Some(system.join(FFPROBE_BIN_NAME))
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
 }

@@ -716,6 +716,7 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            ffmpeg_resolver::init_resource_dir(app.path().resource_dir()?);
             if let Ok(dir) = app.path().app_log_dir() {
                 app_log::init(dir);
             }
@@ -725,6 +726,19 @@ pub fn run() {
                 &format!("Started Vega {}", app.package_info().version),
             );
             process_guard::init_process_guard();
+            for (tool, result) in [
+                ("FFmpeg", ffmpeg_resolver::get_ffmpeg_path()),
+                ("FFprobe", ffmpeg_resolver::get_ffprobe_path()),
+            ] {
+                match result {
+                    Ok(path) => app_log::record(
+                        app_log::Level::Info,
+                        "media_tools",
+                        &format!("{}: {}", tool, path.display()),
+                    ),
+                    Err(error) => vlog_warn!("[media_tools] {}: {}", tool, error),
+                }
+            }
 
             // Installers register vega:// on Windows and Linux. This also
             // covers dev runs and portable copies. macOS uses Info.plist.

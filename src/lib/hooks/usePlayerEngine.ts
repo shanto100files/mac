@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {LibmediaPlayerAdapter} from "../player/LibmediaPlayerAdapter";
+import type {PlayerEngine} from "../player/PlayerEngine";
 import { HtmlVideoEngine } from "../player/HtmlVideoEngine";
 import type { PlayerEngineState } from "../player/PlayerEngine";
 
@@ -19,6 +21,7 @@ type VideoRefType =
 export function usePlayerEngine(
   videoRef?: VideoRefType,
   opts?: UsePlayerEngineOptions,
+  engineKind: "builtin" | "libmedia" = "builtin",
 ) {
   const [engineState, setEngineState] = useState<PlayerEngineState>({
     isInitialized: true,
@@ -44,7 +47,7 @@ export function usePlayerEngine(
   const lastReportedErrorRef = useRef<string | null>(null);
 
   const [videoNode, setVideoNode] = useState<HTMLVideoElement | null>(null);
-  const engineRef = useRef<HtmlVideoEngine | null>(null);
+  const engineRef = useRef<PlayerEngine | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
@@ -90,13 +93,13 @@ export function usePlayerEngine(
     [videoRef],
   );
 
-  const setupEngine = useCallback((el: HTMLVideoElement): HtmlVideoEngine | null => {
+  const setupEngine = useCallback((el: HTMLVideoElement): PlayerEngine | null => {
     if (engineRef.current) {
       return engineRef.current;
     }
 
     try {
-      const engine = new HtmlVideoEngine(el);
+      const engine = engineKind === "libmedia" ? new LibmediaPlayerAdapter(el) : new HtmlVideoEngine(el);
       engineRef.current = engine;
       setInitError(null);
       if (currentSpeedRef.current !== 1.0) {
@@ -157,7 +160,7 @@ export function usePlayerEngine(
       setInitError(msg);
       return null;
     }
-  }, []);
+  }, [engineKind]);
 
   useEffect(() => {
     const el = resolveVideoElement();
@@ -450,6 +453,6 @@ export function usePlayerEngine(
         engineRef.current = null;
       }
     },
-    setProperty: async (_prop: string, _val: any) => { },
+    setProperty: async (prop: string, val: any) => {await engineRef.current?.setProperty?.(prop,val);},
   };
 }

@@ -120,16 +120,16 @@ export const PlayerSettings: React.FC = () => {
 
       <div className="settings-divider" />
 
-      {mpvSupported && (
+      {(
         <>
-          {/* Player Engine (Windows only) */}
+          {/* Playback engines share the desktop controls. */}
           <div className="settings-row">
             <div className="settings-info">
               <h3 className="label-lg">Player Engine</h3>
               <p className="body-md text-muted">
                 {playerEngine === "mpv"
                   ? "mpv: plays HEVC, 4K and HDR with GPU decoding and low CPU use."
-                  : "Built-in: browser video with FFmpeg conversion for unsupported formats."}{" "}
+                  : playerEngine === "libmedia" ? "Libmedia: MKV, MP4 and HLS playback in the desktop player." : "Built-in: browser video with FFmpeg conversion for unsupported formats."}{" "}
                 Applies the next time the player opens.
               </p>
             </div>
@@ -140,12 +140,13 @@ export const PlayerSettings: React.FC = () => {
               >
                 Built-in
               </FocusableButton>
-              <FocusableButton
+              <FocusableButton className={`theme-toggle-btn ${playerEngine === "libmedia" ? "active" : ""}`} onClick={() => handleSelectEngine("libmedia")}>Libmedia</FocusableButton>
+              {mpvSupported && <FocusableButton
                 className={`theme-toggle-btn ${playerEngine === "mpv" ? "active" : ""}`}
                 onClick={() => handleSelectEngine("mpv")}
               >
                 mpv
-              </FocusableButton>
+              </FocusableButton>}
             </div>
           </div>
 
