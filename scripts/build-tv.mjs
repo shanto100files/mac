@@ -45,7 +45,7 @@ if (target === 'webos') {
     try {await access(path.join(module,'package.json'));} catch {run('vega',['project','generate','--template','basic-turbo-module','--name','VegaTransport','--outputDir',module]);}
     await mkdir(path.join(module,'src/turbo-modules'),{recursive:true});
     await cp(path.join(root,'tv/amazon-vega/NativeVegaTransport.ts'),path.join(module,'src/turbo-modules/NativeVegaTransport.ts'));
-    run('npm',['install'],module);
+    run('npm',['install','--include=dev'],module);
     // The SDK template already contains a sample implementation. Regenerate it
     // from our interface on every build, then reapply our native host methods.
     run('npx',['keplerscript-turbomodule-api','codegen','src/turbo-modules/NativeVegaTransport.ts','-o','kepler/turbo-modules/','--new','--namespace','VegaTransportModule'],module);
@@ -61,6 +61,12 @@ if (target === 'webos') {
     await cp(path.join(root,'tv/amazon-vega/CMakeLists.txt'),path.join(module,'CMakeLists.txt'));
     await cp(path.join(root,'tv/amazon-vega/AutoLinkInit.cpp'),path.join(module,'kepler/AutoLinkInit.cpp'));
     await writeFile(path.join(module,'react-native.config.js'),`module.exports={dependency:{platforms:{kepler:{autolink:{'in.vegaapp.tv.transport':{libraryName:'libVegaTransport.so',provider:'application',linkDynamic:true,turbomodules:['VegaTransport']}}}}}};\n`);
+    // Build the native libraries through the SDK template's prepack lifecycle.
+    // Installing the source folder alone leaves autolinking without a .so.
+    run('npm',['pack','--pack-destination',out],module);
+    const modulePackage=JSON.parse(await readFile(path.join(module,'package.json'),'utf8'));
+    const moduleArchive=path.join(out,`${modulePackage.name.replace(/^@/,'').replace(/\//g,'-')}-${modulePackage.version}.tgz`);
+    await access(moduleArchive);
     await cp(path.join(root,'tv/amazon-vega/App.tsx'),path.join(app,'src/App.tsx'));
     await mkdir(path.join(app,'src/turbo-modules'),{recursive:true});
     await cp(path.join(root,'tv/amazon-vega/NativeVegaTransport.ts'),path.join(app,'src/turbo-modules/NativeVegaTransport.ts'));
@@ -68,11 +74,14 @@ if (target === 'webos') {
     await mkdir(path.join(app,'assets/ui'),{recursive:true});
     await cp(path.join(out,'ui'),path.join(app,'assets/ui'),{recursive:true});
     const manifest=path.join(app,'manifest.toml');let toml=await readFile(manifest,'utf8');
+    const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
+    toml=toml.replace(/(\[package\]\s*\n)([\s\S]*?)(?=\n\[|$)/,(_match,heading,fields)=>heading+fields
+      .replace(/^title\s*=.*$/m,'title = "Vega"')
+      .replace(/^version\s*=.*$/m,`version = "${version}"`));
     if (!toml.includes('[network-traffic-policy.cleartext]')) toml+='\n[network-traffic-policy.cleartext]\nallowed-domains = ["127.0.0.1"]\n';
     await writeFile(manifest,toml);
     run('vega',['project','update-manifest','--os-min','1.2','--os-version','1.2'],app);
-    run('npm',['install','--include=dev','--save',module],app);
-    const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
+    run('npm',['install','--include=dev','--save',moduleArchive],app);
     run('npx',['--no-install','react-native','build-vega','--build-type','Release','--build-version',version],app,{VEGA_TV_NATIVE_SOURCE:path.join(root,'tv/native-host')});
   } else {
     await mkdir(path.join(out,'wrapper'),{recursive:true});
