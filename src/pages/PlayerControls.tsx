@@ -1,4 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
+import {isTauriRuntime} from "../platform/host";
+import {pickBrowserFile} from "../platform/browserFiles";
 import {
   useFocusable,
   FocusContext,
@@ -86,7 +88,7 @@ interface PlayerControlsProps {
   onSelectAudioTrack: (id: number | "no" | "auto") => void;
   onSelectSubtitleTrack: (id: number | "no" | "auto") => void;
   onSelectVideoTrack: (id: number | "no" | "auto") => void;
-  onAddSubtitleFile?: (path: string, title?: string) => void;
+  onAddSubtitleFile?: (path: string, title?: string) => void | Promise<void>;
   onPlaybackRateChange: (rate: number) => void;
   onTogglePip: () => void;
   isPip: boolean;
@@ -336,6 +338,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   const handleLoadLocalSubtitle = async () => {
     try {
+      if (!isTauriRuntime()) {
+        const file = await pickBrowserFile('.srt,.vtt,.ass,.ssa,.ttml');
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        try {await onAddSubtitleFile?.(url, file.name); setOpenMenu(null);}
+        finally {URL.revokeObjectURL(url);}
+        return;
+      }
       const { open } = await import("@tauri-apps/plugin-dialog");
       const selected = await open({
         multiple: false,
@@ -856,7 +866,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                 </FocusableButton>
               )}
 
-              <FocusableButton
+              {isTauriRuntime() && <FocusableButton
                 focusable={true}
                 focusKey="PLAYER_PIP"
                 className={`action-btn text-btn ${isPip ? "active" : ""}`}
@@ -864,7 +874,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               >
                 <PictureInPicture size={20} />
                 <span>PIP</span>
-              </FocusableButton>
+              </FocusableButton>}
 
               <div className="inline-menu-container">
                 <FocusableButton
@@ -1061,7 +1071,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                   ["I", "Toggle picture-in-picture"],
                   ["N / P", "Next / Previous episode"],
                   ["?", "Show or hide shortcuts"],
-                ].map(([shortcut, action]) => (
+                ].filter(([shortcut]) => shortcut !== "I" || isTauriRuntime()).map(([shortcut, action]) => (
                   <div className="player-shortcut-row" key={shortcut}>
                     <kbd>{shortcut}</kbd>
                     <span>{action}</span>

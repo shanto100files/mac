@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../../platform/host";
 import {LibmediaPlayerAdapter} from "../player/LibmediaPlayerAdapter";
 import type {PlayerEngine} from "../player/PlayerEngine";
 import { HtmlVideoEngine } from "../player/HtmlVideoEngine";
@@ -48,6 +49,7 @@ export function usePlayerEngine(
 
   const [videoNode, setVideoNode] = useState<HTMLVideoElement | null>(null);
   const engineRef = useRef<PlayerEngine | null>(null);
+  const engineVideoRef = useRef<HTMLVideoElement | null>(null);
   const optsRef = useRef(opts);
   optsRef.current = opts;
 
@@ -95,12 +97,15 @@ export function usePlayerEngine(
 
   const setupEngine = useCallback((el: HTMLVideoElement): PlayerEngine | null => {
     if (engineRef.current) {
-      return engineRef.current;
+      if (engineVideoRef.current === el) return engineRef.current;
+      engineRef.current.destroy();
+      engineRef.current = null;
     }
 
     try {
       const engine = engineKind === "libmedia" ? new LibmediaPlayerAdapter(el) : new HtmlVideoEngine(el);
       engineRef.current = engine;
+      engineVideoRef.current = el;
       setInitError(null);
       if (currentSpeedRef.current !== 1.0) {
         engine.setSpeed(currentSpeedRef.current);
@@ -167,7 +172,11 @@ export function usePlayerEngine(
     if (!el) return;
 
     setupEngine(el);
+  }, [resolveVideoElement, setupEngine]);
 
+  // Resolving a ref can rerun setup for the same element. Only dispose on
+  // unmount or a change of engine/ref ownership, not that state update.
+  useEffect(() => {
     return () => {
       if (seekDebounceTimerRef.current) {
         clearTimeout(seekDebounceTimerRef.current);
@@ -176,9 +185,10 @@ export function usePlayerEngine(
       if (engineRef.current) {
         engineRef.current.destroy();
         engineRef.current = null;
+        engineVideoRef.current = null;
       }
     };
-  }, [resolveVideoElement, setupEngine]);
+  }, [setupEngine, videoRef]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
@@ -372,6 +382,7 @@ export function usePlayerEngine(
 
   const requestThumbnail = useCallback(
     async (time: number, sourceUrl?: string, headers?: Record<string, string>) => {
+      if (!isTauriRuntime()) return null;
       const activeSource =
         sourceUrl ||
         thumbnailSourceRef.current?.source ||

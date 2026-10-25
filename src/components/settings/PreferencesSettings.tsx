@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import type {VerificationWindowPolicy} from '../../lib/storage/SettingsStorage';
+import {isTauriRuntime} from "../../platform/host";
 import {
   MAX_DOWNLOAD_CONNECTIONS,
   MIN_DOWNLOAD_CONNECTIONS,
@@ -19,6 +21,7 @@ import { Input } from "../ui/input";
 import { CustomSelect } from "../CustomSelect";
 import { syncFromSharedFolder } from "../../lib/sync/syncService";
 import { clearAppCache } from "../../lib/clearAppCache";
+import {updateProvidersService} from '../../lib/services/UpdateProviders';
 import { ProxyPreferenceSection } from "./ProxyPreferenceSection";
 import { FocusableSlider } from "./SubtitleSettings";
 
@@ -29,6 +32,7 @@ export const PreferencesSettings: React.FC = () => {
   const [excludedQualities, setExcludedQualities] = useState<string[]>([]);
   const [autoInstallUpdates, setAutoInstallUpdates] = useState<boolean>(true);
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(true);
+  const [providerAutoUpdates, setProviderAutoUpdates] = useState(() => settingsStorage.isProviderAutoUpdateEnabled());
   const [tvModeEnabled, setTvModeEnabled] = useState<boolean>(false);
   const [devtoolsShortcutsEnabled, setDevtoolsShortcutsEnabled] =
     useState<boolean>(false);
@@ -42,6 +46,12 @@ export const PreferencesSettings: React.FC = () => {
   const [tmdbApiKey, setTmdbApiKey] = useState<string>("");
   const [tmdbKeySaved, setTmdbKeySaved] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
+  const [verificationPolicy, setVerificationPolicy] = useState<VerificationWindowPolicy>(() => settingsStorage.getVerificationWindowPolicy());
+  useEffect(() => {
+    const update = () => setVerificationPolicy(settingsStorage.getVerificationWindowPolicy());
+    window.addEventListener('vega-verification-policy-change', update);
+    return () => window.removeEventListener('vega-verification-policy-change', update);
+  }, []);
 
   useEffect(() => {
     setDownloadLocation(settingsStorage.getDownloadLocation());
@@ -164,6 +174,7 @@ export const PreferencesSettings: React.FC = () => {
   return (
     <div className="preferences-settings">
       {/* Download Directory */}
+      {isTauriRuntime() && <>
       <div className="settings-row">
         <div className="settings-info">
           <h3 className="label-lg">Download Directory</h3>
@@ -289,6 +300,27 @@ export const PreferencesSettings: React.FC = () => {
       <div className="settings-divider" />
 
       {/* TV Mode */}
+      </>}
+      <div className="settings-row">
+        <div className="settings-info">
+          <h3 className="label-lg">Auto update providers</h3>
+          <p className="body-md text-muted">Install provider updates automatically. Turn off to review and install updates manually in Extensions.</p>
+        </div>
+        <Switch checked={providerAutoUpdates} aria-label="Auto update providers" onCheckedChange={enabled => {
+          settingsStorage.setProviderAutoUpdateEnabled(enabled);
+          setProviderAutoUpdates(enabled);
+          if (enabled) void updateProvidersService.checkForUpdatesAndAutoUpdate().catch(error => console.warn('Provider update check failed:', error));
+        }}/>
+      </div>
+      <div className="settings-divider" />
+      <div className="settings-row">
+        <div className="settings-info">
+          <h3 className="label-lg">Provider verification windows</h3>
+          <p className="body-md text-muted">Choose whether providers may open a verification window. Private-session safeguards always apply.</p>
+        </div>
+        <CustomSelect options={[{value:'block',label:'Block'},{value:'ask',label:'Ask every time'},{value:'allow',label:'Allow'}]} value={verificationPolicy} onChange={value => settingsStorage.setVerificationWindowPolicy(value as VerificationWindowPolicy)}/>
+      </div>
+      <div className="settings-divider" />
       <div className="settings-row">
         <div className="settings-info">
           <h3 className="label-lg">TV / Controller Mode</h3>
@@ -307,6 +339,7 @@ export const PreferencesSettings: React.FC = () => {
       <div className="settings-divider" />
 
       {/* Developer Tools Shortcuts */}
+      {isTauriRuntime() && <>
       <div className="settings-row">
         <div className="settings-info">
           <h3 className="label-lg">Developer Tools Shortcuts</h3>
@@ -325,6 +358,7 @@ export const PreferencesSettings: React.FC = () => {
       <div className="settings-divider" />
 
       {/* TMDB API Key */}
+      </>}
       <div className="settings-row" style={{ alignItems: "flex-start" }}>
         <div className="settings-info">
           <h3 className="label-lg">TMDB API Key</h3>
@@ -385,6 +419,7 @@ export const PreferencesSettings: React.FC = () => {
       <div className="settings-divider" />
 
       {/* DNS over HTTPS */}
+      {isTauriRuntime() && <>
       <div className="settings-row" style={{ alignItems: "flex-start" }}>
         <div className="settings-info">
           <h3 className="label-lg">DNS over HTTPS</h3>
@@ -436,6 +471,7 @@ export const PreferencesSettings: React.FC = () => {
       <div className="settings-divider" />
 
       {/* Excluded Qualities */}
+      </>}
       <div className="settings-row">
         <div className="settings-info" style={{ width: "100%" }}>
           <h3 className="label-lg">Excluded Qualities</h3>

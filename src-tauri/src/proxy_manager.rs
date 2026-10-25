@@ -54,6 +54,16 @@ pub async fn get_active_proxy_url() -> Option<String> {
     state.proxy_url.clone()
 }
 
+/// The app-owned ByeDPI relay validates DNS and IP targets before forwarding.
+/// A generic HTTP proxy may resolve/connect independently of our resolver.
+pub async fn get_checked_provider_proxy_url() -> Result<Option<String>, String> {
+    let state = GLOBAL_PROXY_STATE.read().await;
+    if state.proxy_url.is_some() && !(state.active_type == ProxyType::ByeDpi && state.relay.is_some()) {
+        return Err("Provider requests require destination-IP checks. This proxy cannot enforce them; disable it to continue.".into());
+    }
+    Ok(state.proxy_url.clone())
+}
+
 pub fn find_available_port() -> Result<u16, String> {
     let listener = TcpListener::bind("127.0.0.1:0")
         .map_err(|e| format!("Failed to bind local port: {}", e))?;

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import {isTauriRuntime} from "../../platform/host";
 import { settingsStorage } from "../../lib/storage";
 import type { PlayerEngineKind } from "../../lib/storage/SettingsStorage";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -134,12 +135,12 @@ export const PlayerSettings: React.FC = () => {
               </p>
             </div>
             <div className="theme-toggle-group">
-              <FocusableButton
+              {isTauriRuntime() && <FocusableButton
                 className={`theme-toggle-btn ${playerEngine === "builtin" ? "active" : ""}`}
                 onClick={() => handleSelectEngine("builtin")}
               >
                 Built-in
-              </FocusableButton>
+              </FocusableButton>}
               <FocusableButton className={`theme-toggle-btn ${playerEngine === "libmedia" ? "active" : ""}`} onClick={() => handleSelectEngine("libmedia")}>Libmedia</FocusableButton>
               {mpvSupported && <FocusableButton
                 className={`theme-toggle-btn ${playerEngine === "mpv" ? "active" : ""}`}
@@ -176,7 +177,7 @@ export const PlayerSettings: React.FC = () => {
       )}
 
       {/* External Player / VLC */}
-      {isAndroid ? (
+      {isTauriRuntime() && (isAndroid ? (
         <div className="settings-row">
           <div className="settings-info">
             <h3 className="label-lg">External Player</h3>
@@ -240,7 +241,7 @@ export const PlayerSettings: React.FC = () => {
             </>
           )}
         </>
-      )}
+      ))}
     </div>
   );
 };

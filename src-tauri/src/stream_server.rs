@@ -96,6 +96,7 @@ impl StreamDnsResolver {
                 .unwrap_or_default()
         };
         if !doh_ips.is_empty() {
+            if crate::public_network::validate_addresses(&doh_ips).is_err() { return Vec::new(); }
             let mut doh_ips = doh_ips;
             doh_ips.sort_by_key(|ip| !ip.is_ipv4());
             return crate::doh_client::network_addresses(doh_ips).await;
@@ -106,6 +107,7 @@ impl StreamDnsResolver {
             .map(|addrs| addrs.map(|a| a.ip()).collect())
             .unwrap_or_default();
         let mut system_ips = system_ips;
+        if crate::public_network::validate_addresses(&system_ips).is_err() { return Vec::new(); }
         system_ips.sort_by_key(|ip: &std::net::IpAddr| !ip.is_ipv4());
         crate::doh_client::network_addresses(system_ips).await
     }
@@ -124,14 +126,12 @@ impl Resolve for StreamDnsResolver {
 
         Box::pin(async move {
             if let Ok(ip) = name_str.parse::<std::net::IpAddr>() {
+                crate::public_network::validate_addresses(&[ip])?;
                 return Ok(Box::new(std::iter::once(SocketAddr::new(ip, 0))) as Addrs);
             }
 
             if name_str.eq_ignore_ascii_case("localhost") {
-                let local_addrs = vec![
-                    SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
-                ];
-                return Ok(Box::new(local_addrs.into_iter()) as Addrs);
+                return Err("Remote media localhost access is blocked".into());
             }
 
             let is_enabled = *enabled_lock.read().await;
@@ -139,7 +139,9 @@ impl Resolve for StreamDnsResolver {
                 let resolver = resolver_lock.read().await;
                 match resolver.lookup_ip(name_str.as_str()).await {
                     Ok(response) => {
-                        let ips = crate::doh_client::network_addresses(response.into_iter().collect()).await;
+                        let resolved: Vec<_> = response.into_iter().collect();
+                        crate::public_network::validate_addresses(&resolved)?;
+                        let ips = crate::doh_client::network_addresses(resolved).await;
                         let addrs: Vec<SocketAddr> = ips.into_iter().map(|ip| SocketAddr::new(ip, 0)).collect();
                         return Ok(Box::new(addrs.into_iter()) as Addrs);
                     }
@@ -155,6 +157,7 @@ impl Resolve for StreamDnsResolver {
             match tokio::net::lookup_host(format!("{}:0", name_str)).await {
                 Ok(std_addrs) => {
                     let addrs: Vec<SocketAddr> = std_addrs.collect();
+                    crate::public_network::validate_addresses(&addrs.iter().map(|a| a.ip()).collect::<Vec<_>>())?;
                     Ok(Box::new(addrs.into_iter()) as Addrs)
                 }
                 Err(sys_err) => {
@@ -177,10 +180,20 @@ lazy_static::lazy_static! {
 }
 
 pub fn build_stream_client(proxy_url: Option<&str>) -> Result<Client, String> {
+    if let Some(proxy) = proxy_url {
+        let parsed = url::Url::parse(proxy).map_err(|_| "Invalid remote media proxy")?;
+        if parsed.scheme() != "socks5h" || parsed.host_str() != Some("127.0.0.1") {
+            return Err("Remote media requires the checked app-owned relay; this proxy can bypass destination checks".into());
+        }
+    }
     let mut builder = Client::builder()
         .dns_resolver(GLOBAL_STREAM_RESOLVER.clone())
         .connect_timeout(std::time::Duration::from_secs(10))
-        .redirect(reqwest::redirect::Policy::limited(10))
+        .redirect(reqwest::redirect::Policy::custom(|attempt| {
+            if crate::public_network::validate_url(attempt.url().as_str()).is_err() { return attempt.error("Remote media redirect is blocked"); }
+            if attempt.previous().len() >= 10 { return attempt.stop(); }
+            attempt.follow()
+        }))
         .pool_idle_timeout(std::time::Duration::from_secs(20))
         .pool_max_idle_per_host(4);
 
@@ -710,6 +723,8 @@ async fn fetch_with_retry(
     range: Option<&str>,
     label: &str,
 ) -> Result<reqwest::Response, StatusCode> {
+    crate::proxy_manager::get_checked_provider_proxy_url().await.map_err(|_| StatusCode::FORBIDDEN)?;
+    crate::public_network::validate_url(url).map_err(|_| StatusCode::FORBIDDEN)?;
     // FFmpeg input waits on this request, and a busy server frees a
     // connection within seconds, so retry source requests longer.
     let max_attempts = if label == "source" { 6 } else { 3 };

@@ -1,11 +1,19 @@
 import { getSourceAuthHeaders } from "../storage/sourceTokenStorage";
+import {getPlatformHost, isTauriRuntime} from "../../platform/host";
+
+/** User-added development servers may use HTTP; remote executable code needs TLS. */
+export function validateSourceTransport(value: string): void {
+  const url = new URL(value);
+  const local = ['localhost','127.0.0.1','[::1]'].includes(url.hostname);
+  if (url.username || url.password || url.protocol !== 'https:' && !(local && url.protocol === 'http:')) throw new Error('Provider source code must use HTTPS. HTTP is allowed only for a manually added local development server.');
+}
 
 /** Identify source downloads as app requests; Codeberg rejects some browser UAs. */
 export const getSourceRequestHeaders = (
   author: string | undefined,
   url: string,
 ): Record<string, string> => ({
-  "User-Agent": "VegaDesktop",
+  ...(isTauriRuntime() || getPlatformHost()?.capabilities.restrictedHeaders ? {"User-Agent": "VegaDesktop"} : {}),
   ...getSourceAuthHeaders(author, url),
 });
 

@@ -1,4 +1,4 @@
-import React, { memo, useCallback, useEffect, useRef } from "react";
+import React, { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { installHorizontalDrag } from "../../lib/horizontalDrag";
 import {
@@ -9,7 +9,8 @@ import {
   useFocusable,
   FocusContext,
 } from "@noriginmedia/norigin-spatial-navigation-react";
-import { PostCardItem, Post } from "./PostCardItem";
+import { PostCardItem, Post, parseAspectRatio } from "./PostCardItem";
+import { settingsStorage } from "../../lib/storage/SettingsStorage";
 import { FocusableButton } from "../layout/FocusableButton";
 import { Skeleton } from "../ui/skeleton";
 import "./ContentSlider.css";
@@ -22,6 +23,20 @@ interface ContentSliderProps {
   filter?: string;
   searchQuery?: string;
   onRemove?: (post: Post, e: React.MouseEvent) => void;
+  windowRows?: boolean;
+  defer?: boolean;
+}
+
+function estimatedRowHeight(posts: Post[]) {
+  const ratios = new Map<string, number>();
+  for (const post of posts) {
+    const ratio = parseAspectRatio(post.aspectRatio);
+    const width = ratio > 1.2 ? "clamp(240px, 20vw, 300px)"
+      : ratio > 0.85 ? "clamp(160px, 14vw, 200px)" : "clamp(146px, 12.5vw, 190px)";
+    ratios.set(width, Math.min(ratios.get(width) ?? Infinity, ratio));
+  }
+  const heights = [...ratios].map(([width, ratio]) => `calc(${width} / ${ratio} + 66px)`);
+  return heights.length > 1 ? `max(${heights.join(", ")})` : heights[0];
 }
 
 export const ContentSlider = memo(function ContentSlider({
@@ -32,8 +47,15 @@ export const ContentSlider = memo(function ContentSlider({
   filter,
   searchQuery,
   onRemove,
+  windowRows = false,
+  defer = false,
 }: ContentSliderProps) {
   const rowRef = useRef<HTMLDivElement>(null);
+  const [rowHeight, setRowHeight] = useState<number>();
+  const rowScrollRef = useRef(0);
+  const [nearViewport, setNearViewport] = useState(!defer);
+  const [tvMode, setTvMode] = useState(() => settingsStorage.isTvModeEnabled() || /android/i.test(navigator.userAgent));
+  const renderPosts = !windowRows || tvMode || typeof IntersectionObserver === "undefined" || nearViewport;
   const navigate = useNavigate();
   const sanitizedTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
 
@@ -46,8 +68,39 @@ export const ContentSlider = memo(function ContentSlider({
   });
 
   useEffect(() => {
-    if (rowRef.current) return installHorizontalDrag(rowRef.current);
-  }, [isLoading, posts.length]);
+    if (!windowRows) return;
+    const update = () => setTvMode(settingsStorage.isTvModeEnabled() || /android/i.test(navigator.userAgent));
+    const resize = () => setRowHeight(undefined);
+    window.addEventListener("vega_tv_mode_changed", update);
+    window.addEventListener("storage", update);
+    window.addEventListener("resize", resize);
+    return () => {
+      window.removeEventListener("vega_tv_mode_changed", update);
+      window.removeEventListener("storage", update);
+      window.removeEventListener("resize", resize);
+    };
+  }, [windowRows]);
+
+  useEffect(() => {
+    const host = focusRef.current;
+    if (!windowRows || tvMode || isLoading || !host || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting && rowRef.current) {
+        setRowHeight(rowRef.current.getBoundingClientRect().height);
+        rowScrollRef.current = rowRef.current.scrollLeft;
+      }
+      setNearViewport(entry.isIntersecting);
+    }, {root: host.closest(".layout-content"), rootMargin: "400px 0px"});
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, [windowRows, tvMode, isLoading, posts.length, focusRef]);
+
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    row.scrollLeft = rowScrollRef.current;
+    return installHorizontalDrag(row);
+  }, [isLoading, posts.length, renderPosts]);
 
   const handleScroll = (direction: "left" | "right") => {
     const row = rowRef.current;
@@ -121,7 +174,7 @@ export const ContentSlider = memo(function ContentSlider({
           )}
         </div>
 
-        <div className="slider-wrapper">
+        {renderPosts ? <div className="slider-wrapper">
           <button
             className="slider-arrow left"
             onClick={() => handleScroll("left")}
@@ -158,7 +211,8 @@ export const ContentSlider = memo(function ContentSlider({
           >
             <ChevronRight size={32} />
           </button>
-        </div>
+        </div> : <div className="slider-row-placeholder" aria-hidden="true"
+          style={{height: rowHeight ?? estimatedRowHeight(posts)}} />}
       </div>
     </FocusContext.Provider>
   );

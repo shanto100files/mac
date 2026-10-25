@@ -24,13 +24,28 @@ const {
   isRateLimitError,
   throwIfRateLimited,
   throwIfSourceForbidden,
+  validateSourceTransport,
 } = loadTypeScript(fileURLToPath(new URL("../../src/lib/services/sourceRequests.ts", import.meta.url)));
 
 const tokens = new Map();
 globalThis.localStorage = { getItem: key => tokens.get(key) ?? null };
+globalThis.window = {__TAURI_INTERNALS__:{}};
 const responseError = (status, data = "", headers = {}) => ({
   message: `Request failed with status code ${status}`,
   response: { status, data, headers },
+});
+
+test('remote executable sources require TLS; explicit local development remains possible', () => {
+  assert.throws(() => validateSourceTransport('http://provider.example/dist/'), /HTTPS/);
+  assert.throws(() => validateSourceTransport('https://user:pass@provider.example/'), /HTTPS/);
+  assert.doesNotThrow(() => validateSourceTransport('https://provider.example/dist/'));
+  assert.doesNotThrow(() => validateSourceTransport('http://localhost:3001/dist/'));
+});
+
+test('ordinary browsers do not receive a forbidden source User-Agent override', () => {
+  const previous=globalThis.window; globalThis.window={};
+  try {assert.equal(getSourceRequestHeaders('foo','https://codeberg.org/foo/manifest.json')['User-Agent'],undefined);}
+  finally {globalThis.window=previous;}
 });
 
 test("Codeberg downloads include a User-Agent and no unrelated GitHub token", () => {

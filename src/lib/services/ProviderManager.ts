@@ -1,5 +1,5 @@
 import axios from "axios";
-import { providerFetch, tauriAxiosAdapter } from "../providers/tauriAxiosAdapter";
+import { providerFetch, platformAxiosAdapter } from "../../platform/network";
 import { Catalog, EpisodeLink, Info, Post, SettingsField, Stream } from "../providers/types";
 import { getBaseUrl } from "../providers/getBaseUrl";
 import { openWebView } from "../../platform/waf";
@@ -15,7 +15,10 @@ import {
   providerAuthor,
   providerScopeId,
 } from "../providers/providerScope";
-import { getJarCookieHeader } from "../providers/providerCookieJar";
+import { getJarCookieHeader, getVerificationUserAgent } from "../providers/providerCookieJar";
+import {publicHttpUrl} from '../../platform/publicNetworkPolicy';
+import {runWithProviderSlot} from './providerExecutionLimits';
+import {getProviderEngine} from './providerEngine';
 
 const MAX_PROVIDER_STATE_SIZE = 1_000_000;
 const MAX_KV_KEY_LENGTH = 256;
@@ -134,52 +137,8 @@ export class ProviderManager {
     );
   }
 
-  private isPrivateHostname(hostname: string): boolean {
-    const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-    if (
-      normalized === "localhost" ||
-      normalized === "::1" ||
-      normalized === "0.0.0.0" ||
-      normalized.endsWith(".localhost")
-    ) {
-      return true;
-    }
-
-    const ipv4 = normalized.split(".").map(Number);
-    if (ipv4.length !== 4 || ipv4.some((part) => !Number.isInteger(part))) {
-      return (
-        normalized.startsWith("fc") ||
-        normalized.startsWith("fd") ||
-        normalized.startsWith("fe8") ||
-        normalized.startsWith("fe9") ||
-        normalized.startsWith("fea") ||
-        normalized.startsWith("feb")
-      );
-    }
-
-    const [first, second] = ipv4;
-    return (
-      first === 0 ||
-      first === 10 ||
-      first === 127 ||
-      (first === 169 && second === 254) ||
-      (first === 172 && second >= 16 && second <= 31) ||
-      (first === 192 && second === 168) ||
-      first >= 224
-    );
-  }
-
   private validateProviderUrl(value: unknown): URL {
-    const url = new URL(String(value ?? ""));
-    if (
-      (url.protocol !== "http:" && url.protocol !== "https:") ||
-      url.username ||
-      url.password ||
-      this.isPrivateHostname(url.hostname)
-    ) {
-      throw new Error("Provider URL is not allowed");
-    }
-    return url;
+    return publicHttpUrl(String(value ?? ''));
   }
 
   private executeModule<T>(
@@ -195,81 +154,103 @@ export class ProviderManager {
     if (moduleCode.length > 2_000_000) {
       return Promise.reject(new Error("Provider module is too large"));
     }
-    return new Promise<T>((resolve, reject) => {
-      const worker = new Worker(
-        new URL("./providerSandbox.worker.ts", import.meta.url),
-        { type: "module", name: `provider-${providerValue}` },
-      );
-      const token = crypto.randomUUID();
-      const timeout = window.setTimeout(() => {
-        worker.terminate();
-        reject(new Error(`Provider ${providerValue} timed out`));
-      }, 120_000);
-      const cleanup = () => {
-        window.clearTimeout(timeout);
-        signal?.removeEventListener("abort", handleAbort);
-        worker.terminate();
-      };
-      const handleAbort = () => {
-        cleanup();
-        reject(new DOMException("Provider request aborted", "AbortError"));
-      };
+    return runWithProviderSlot(async () => {
+      const engineModule = await getProviderEngine(signal);
+      signal?.throwIfAborted();
+      return new Promise<T>((resolve, reject) => {
+        const worker = new Worker(
+          new URL("./providerSandbox.worker.ts", import.meta.url),
+          { type: "module", name: `provider-${providerValue}` },
+        );
+        const token = crypto.randomUUID();
+        const rpcController = new AbortController();
+        let rpcCount = 0;
+        let inFlight = 0;
+        const timeout = window.setTimeout(() => {
+          cleanup();
+          reject(new Error(`Provider ${providerValue} timed out`));
+        }, 120_000);
+        const cleanup = () => {
+          rpcController.abort();
+          window.clearTimeout(timeout);
+          signal?.removeEventListener("abort", handleAbort);
+          worker.terminate();
+        };
+        const handleAbort = () => {
+          cleanup();
+          reject(new DOMException("Provider request aborted", "AbortError"));
+        };
 
-      signal?.addEventListener("abort", handleAbort, { once: true });
-      worker.onerror = (event) => {
-        cleanup();
-        reject(new Error(event.message || `Provider ${providerValue} failed`));
-      };
-      worker.onmessage = async (event) => {
-        const message = event.data;
-        if (!message || message.token !== token) return;
-        if (message.type === "rpc") {
-          try {
-            const result = await this.handleRpc(
-              providerValue,
-              author,
-              message.operation,
-              message.args,
-            );
-            worker.postMessage({
-              type: "rpc-result",
-              token,
-              id: message.id,
-              result,
-            });
-          } catch (error) {
-            worker.postMessage({
-              type: "rpc-result",
-              token,
-              id: message.id,
-              error: error instanceof Error ? error.message : String(error),
-            });
+        signal?.addEventListener("abort", handleAbort, { once: true });
+        worker.onerror = (event) => {
+          cleanup();
+          reject(new Error(event.message || `Provider ${providerValue} failed`));
+        };
+        worker.onmessage = async (event) => {
+          const message = event.data;
+          if (!message || message.token !== token) return;
+          if (message.type === "rpc") {
+            if (++rpcCount > 256 || inFlight >= 16) {cleanup(); reject(new Error('Provider request limit exceeded')); return;}
+            inFlight++;
+            try {
+              const result = await this.handleRpc(
+                providerValue,
+                author,
+                message.operation,
+                message.args,
+                rpcController.signal,
+              );
+              worker.postMessage({
+                type: "rpc-result",
+                token,
+                id: message.id,
+                result,
+              });
+            } catch (error) {
+              worker.postMessage({
+                type: "rpc-result",
+                token,
+                id: message.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            } finally {inFlight--;}
+            return;
           }
-          return;
-        }
-        if (message.type === "result") {
-          try {
-            if (message.error) reject(new Error(message.error));
-            else {
-              this.saveProviderState(scope, message.state);
-              resolve(message.result as T);
+          if (message.type === "result") {
+            try {
+              if (message.error) reject(new Error(message.error));
+              else {
+                this.saveProviderState(scope, message.state);
+                resolve(message.result as T);
+              }
+            } catch (error) {
+              reject(error);
+            } finally {
+              cleanup();
             }
-          } catch (error) {
-            reject(error);
-          } finally {
-            cleanup();
           }
+        };
+        const invocation = {
+          type: "invoke",
+          engineModule,
+          token,
+          moduleCode,
+          exportName,
+          args,
+          state: this.getProviderState(scope),
+        };
+        try {
+          worker.postMessage(invocation);
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'DataCloneError') {
+            // Some older WebViews cannot clone WASM modules between workers.
+            // They retain the isolated, per-call compilation path.
+            try { worker.postMessage({...invocation, engineModule: undefined}); }
+            catch (failure) { cleanup(); reject(failure); }
+          } else { cleanup(); reject(error); }
         }
-      };
-      worker.postMessage({
-        type: "invoke",
-        token,
-        moduleCode,
-        exportName,
-        args,
-        state: this.getProviderState(scope),
       });
-    });
+    }, signal);
   }
 
   private async handleRpc(
@@ -277,13 +258,14 @@ export class ProviderManager {
     author: string,
     operation: string,
     args: any,
+    signal?: AbortSignal,
   ): Promise<unknown> {
     if (operation === "getBaseUrl") {
       return getBaseUrl(String(args?.providerValue ?? ""));
     }
     if (operation === "openWebView") {
       const url = this.validateProviderUrl(args?.url);
-      const result = await openWebView(url.toString(), args?.options, author);
+      const result = await openWebView(url.toString(), args?.options, author, providerValue, signal);
       return { ...result, cookie: result.cookies };
     }
     if (operation === "fetch") {
@@ -292,13 +274,17 @@ export class ProviderManager {
       const response = await providerFetch(author, url, {
         method: init.method,
         headers: init.headers,
-        body: init.body,
+        body: Array.isArray(init.body) ? Uint8Array.from(init.body) : init.body,
         redirect: init.redirect,
+        signal,
       });
-      const data = await response.arrayBuffer();
-      if (data.byteLength > 32 * 1024 * 1024) {
-        throw new Error("Provider response is too large");
-      }
+      const reader = response.body?.getReader();
+      const chunks: Uint8Array[] = []; let size = 0;
+      if (!reader) {const bytes = new Uint8Array(await response.arrayBuffer()); size = bytes.byteLength; if (size > 8 * 1024 * 1024) throw new Error('Provider response is too large'); chunks.push(bytes);}
+      if (reader) try {while (true) {signal?.throwIfAborted(); const {done,value} = await reader.read(); if (done) break; size += value.byteLength; if (size > 8 * 1024 * 1024) throw new Error('Provider response is too large'); chunks.push(value);}}
+      catch (error) {await reader.cancel().catch(() => {}); throw error;}
+      const bytes = new Uint8Array(size); let offset = 0; for (const chunk of chunks) {bytes.set(chunk,offset); offset += chunk.byteLength;}
+      const data = bytes.buffer;
       return {
         status: response.status,
         statusText: response.statusText,
@@ -553,18 +539,25 @@ export class ProviderManager {
    */
   private withJarCookies(author: string, streams: Stream[]): Stream[] {
     return streams.map((stream) => {
+      if (!stream || typeof stream.link !== 'string') throw new Error('Invalid provider stream');
+      if (!stream.link.startsWith('magnet:')) publicHttpUrl(stream.link);
+      if (stream.localBaseDir) throw new Error('Providers cannot supply local file directories');
+      for (const subtitle of stream.subtitles || []) publicHttpUrl(subtitle.uri);
       const headers =
         stream.headers && typeof stream.headers === "object"
           ? stream.headers
           : {};
-      if (
-        !/^https?:/i.test(stream.link ?? "") ||
-        Object.keys(headers).some((k) => k.toLowerCase() === "cookie")
-      ) {
-        return stream;
-      }
+      if (!/^https?:/i.test(stream.link ?? "")) return stream;
       const cookie = getJarCookieHeader(author, stream.link);
-      return cookie ? { ...stream, headers: { ...headers, Cookie: cookie } } : stream;
+      const verifiedAgent = getVerificationUserAgent(author, stream.link);
+      if (!cookie && !verifiedAgent) return stream;
+      const next = {...headers};
+      if (cookie && !Object.keys(next).some(name => name.toLowerCase() === 'cookie')) next.Cookie = cookie;
+      if (verifiedAgent) {
+        for (const name of Object.keys(next)) if (/^sec-|^user-agent$/i.test(name)) delete next[name];
+        next['User-Agent'] = verifiedAgent;
+      }
+      return {...stream, headers:next};
     });
   }
 
@@ -635,8 +628,8 @@ export class ProviderManager {
             settingsAuthor = source?.author;
             res = await axios.get(sourceUrl, {
               timeout: 8000,
-              // Native fetch: no CORS preflight for the auth header.
-              adapter: tauriAxiosAdapter,
+              // Use the active platform's networking and source credentials.
+              adapter: platformAxiosAdapter,
               headers: getSourceRequestHeaders(source?.author, sourceUrl),
             });
           }

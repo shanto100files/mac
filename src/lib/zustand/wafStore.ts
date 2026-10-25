@@ -14,6 +14,7 @@ export interface WafRequest extends OpenWebViewOptions {
   url: string;
   /** Source author of the provider; the solved cookies go to its jar. */
   author: string;
+  signal?: AbortSignal;
   resolve: (result: OpenWebViewResult) => void;
   reject: (error: Error) => void;
 }

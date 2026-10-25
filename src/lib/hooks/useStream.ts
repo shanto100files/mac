@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../../platform/host";
 
 import { providerManager } from "../services/ProviderManager";
 import { settingsStorage } from "../storage";
@@ -28,6 +29,7 @@ const getSubtitleKey = (subs: any[]) =>
   subs.map((sub) => sub?.url || sub?.uri || "").join("|");
 
 const getCompletedDownload = (activeEpisode: any, routeParams: any) => {
+  if (!isTauriRuntime()) return undefined;
   const downloads = useDownloadStore.getState().downloads;
   if (activeEpisode?.localFile) {
     return Object.values(downloads).find(
@@ -60,6 +62,7 @@ const getDownloadedSubtitles = async (
   activeEpisode: any,
   routeParams: any,
 ): Promise<any[]> => {
+  if (!isTauriRuntime()) return [];
   const downloads = useDownloadStore.getState().downloads;
   const baseTitle = routeParams?.primaryTitle || "Unknown Title";
   const episodeBaseId =

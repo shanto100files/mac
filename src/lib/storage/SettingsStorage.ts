@@ -1,10 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../../platform/host";
 import { mainStorage } from "./StorageService";
 
 /**
  * Storage keys for settings
  */
 export type PlayerEngineKind = "builtin" | "mpv" | "libmedia";
+export type VerificationWindowPolicy = "block" | "ask" | "allow";
 
 /** Connections one download may open; servers that refuse extra ones lower it. */
 export const MIN_DOWNLOAD_CONNECTIONS = 1;
@@ -23,6 +25,7 @@ export enum SettingsKeys {
   SHOW_TAB_BAR_LABELS = "showTabBarLabels",
   CUSTOM_COLOR = "customColor",
   TV_MODE_ENABLED = "tvModeEnabled",
+  VERIFICATION_WINDOWS = "verificationWindows",
   INFO_PAGE_DYNAMIC_THEME = "infoPageDynamicTheme",
   SHOW_CONTINUE_WATCHING = "showContinueWatching",
   // Feedback settings
@@ -32,6 +35,7 @@ export enum SettingsKeys {
   // Update settings
   AUTO_CHECK_UPDATE = "autoCheckUpdate",
   AUTO_DOWNLOAD = "autoDownload",
+  AUTO_UPDATE_PROVIDERS = "autoUpdateProviders",
 
   // Player settings
   SHOW_MEDIA_CONTROLS = "showMediaControls",
@@ -85,6 +89,17 @@ export enum SettingsKeys {
  * Settings storage manager
  */
 export class SettingsStorage {
+  getVerificationWindowPolicy(): VerificationWindowPolicy {
+    const value = mainStorage.getString(SettingsKeys.VERIFICATION_WINDOWS);
+    return value === 'block' || value === 'allow' ? value : 'ask';
+  }
+
+  setVerificationWindowPolicy(value: VerificationWindowPolicy): void {
+    if (!['block', 'ask', 'allow'].includes(value)) throw new Error('Invalid verification-window policy');
+    mainStorage.setString(SettingsKeys.VERIFICATION_WINDOWS, value);
+    window.dispatchEvent(new Event('vega-verification-policy-change'));
+  }
+
   // Theme settings
   getPrimaryColor(): string {
     return mainStorage.getString(SettingsKeys.PRIMARY_COLOR) || "#FF6347";
@@ -133,6 +148,9 @@ export class SettingsStorage {
 
   setTvModeEnabled(enabled: boolean): void {
     mainStorage.setBool(SettingsKeys.TV_MODE_ENABLED, enabled);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("vega_tv_mode_changed"));
+    }
   }
 
   isInfoPageDynamicThemeEnabled(): boolean {
@@ -188,11 +206,13 @@ export class SettingsStorage {
   }
 
   isVlcEnabled(): boolean {
+    if (!isTauriRuntime()) return false;
     return mainStorage.getBool(SettingsKeys.VLC_ENABLED, false);
   }
 
 
   isExternalPlayerEnabled(): boolean {
+    if (!isTauriRuntime()) return false;
     return mainStorage.getBool(SettingsKeys.EXTERNAL_PLAYER_ENABLED, false);
   }
 
@@ -234,6 +254,14 @@ export class SettingsStorage {
   // Update settings
   isAutoCheckUpdateEnabled(): boolean {
     return mainStorage.getBool(SettingsKeys.AUTO_CHECK_UPDATE, true);
+  }
+
+  isProviderAutoUpdateEnabled(): boolean {
+    return mainStorage.getBool(SettingsKeys.AUTO_UPDATE_PROVIDERS, true);
+  }
+
+  setProviderAutoUpdateEnabled(enabled: boolean): void {
+    mainStorage.setBool(SettingsKeys.AUTO_UPDATE_PROVIDERS, enabled);
   }
 
   setAutoCheckUpdateEnabled(enabled: boolean): void {
@@ -490,6 +518,7 @@ export class SettingsStorage {
 
   /** True where the mpv player engine is available (Windows desktop). */
   isMpvEngineSupported(): boolean {
+    if (!isTauriRuntime()) return false;
     const ua = navigator.userAgent.toLowerCase();
     return ua.includes("windows") && !ua.includes("android");
   }
@@ -499,6 +528,7 @@ export class SettingsStorage {
    * "mpv": libmpv rendered under the transparent webview (Windows only).
    */
   getPlayerEngine(): PlayerEngineKind {
+    if (!isTauriRuntime()) return "libmedia";
     const saved = mainStorage.getString(SettingsKeys.PLAYER_ENGINE);
     if (saved === "libmedia") return "libmedia";
     return saved === "mpv" && this.isMpvEngineSupported() ? "mpv" : "builtin";
@@ -547,6 +577,7 @@ export class SettingsStorage {
   }
 
   syncStreamDoh(): void {
+    if (!isTauriRuntime()) return;
     try {
       invoke("set_stream_doh", {
         provider: this.getDohProvider(),

@@ -17,11 +17,12 @@ interface CookieInfo {
 }
 
 const WAF_WEBVIEW_LABEL = 'waf-solver';
+const labelFor = (request: WafRequest) => `${WAF_WEBVIEW_LABEL}-${request.id}`;
 
-async function getCookiesForUrl(url: string): Promise<Record<string, string>> {
+async function getCookiesForUrl(url: string, label: string): Promise<Record<string, string>> {
   try {
     const cookies = await invoke<CookieInfo[]>('get_cookies_for_url', {
-      webviewLabel: WAF_WEBVIEW_LABEL,
+      webviewLabel: label,
       url,
     });
     const map: Record<string, string> = {};
@@ -38,9 +39,9 @@ async function getCookiesForUrl(url: string): Promise<Record<string, string>> {
  * Runs JavaScript in the solver window (Rust command waf_eval) and returns
  * the parsed result. Undefined if the window is gone or the script fails.
  */
-async function wafEval<T>(script: string): Promise<T | undefined> {
+async function wafEval<T>(script: string, label: string): Promise<T | undefined> {
   try {
-    const raw = await invoke<string>('waf_eval', { script });
+    const raw = await invoke<string>('waf_eval', { script, webviewLabel:label });
     return JSON.parse(raw) as T;
   } catch {
     return undefined;
@@ -118,13 +119,14 @@ export const WafDialog: React.FC = () => {
   }, []);
 
   const closeWebview = useCallback(async () => {
-    if (webviewRef.current) {
+    const opened = webviewRef.current;
+    webviewRef.current = null;
+    if (opened) {
       try {
-        await webviewRef.current.destroy();
+        await opened.destroy();
       } catch {
         // already closed
       }
-      webviewRef.current = null;
     }
     setVisible(false);
   }, []);
@@ -133,13 +135,15 @@ export const WafDialog: React.FC = () => {
     async (req: WafRequest, data?: string, dismissed = false) => {
       cleanup();
       try {
+        req.signal?.throwIfAborted();
         // Page response like mobile: the injected script's payload, else the
         // rendered HTML of the page.
-        const pageData = dismissed ? '' : data ?? (await wafEval<string>(GRAB_HTML_JS)) ?? '';
+        const pageData = dismissed ? '' : data ?? (await wafEval<string>(GRAB_HTML_JS, labelFor(req))) ?? '';
         const cookiesRaw = await invoke<CookieInfo[]>('get_cookies_for_url', {
-          webviewLabel: WAF_WEBVIEW_LABEL,
+          webviewLabel: labelFor(req),
           url: req.url,
         });
+        req.signal?.throwIfAborted();
 
         const cookieMap: Record<string, string> = {};
         let expiresAt: number | null = null;
@@ -158,14 +162,14 @@ export const WafDialog: React.FC = () => {
           cookiesRaw.map(c => ({
             name: c.name,
             value: c.value,
-            domain: c.domain || undefined,
+            domain: c.name.startsWith('__Host-') ? undefined : c.domain || undefined,
+            path: c.path,
+            secure: c.secure,
             expiresAt: c.expires ? c.expires * 1000 : null,
           })),
         );
 
         const cookies = buildCookieString(cookieMap);
-        console.log('[WAF] finalizeResolve cookieMap:', JSON.stringify(cookieMap));
-        console.log('[WAF] finalizeResolve cookie string:', cookies);
 
         const result: OpenWebViewResult = {
           data: typeof pageData === 'string' ? pageData : '',
@@ -184,7 +188,7 @@ export const WafDialog: React.FC = () => {
         );
       } finally {
         remove(req.id);
-        closeWebview();
+        if (webviewRef.current?.label === labelFor(req)) closeWebview();
       }
     },
     [remove, closeWebview, cleanup],
@@ -209,16 +213,18 @@ export const WafDialog: React.FC = () => {
       return;
     }
 
+    let disposed = false;
     const openWebview = async () => {
       // Close any existing webview first
-      const existing = await WebviewWindow.getByLabel(WAF_WEBVIEW_LABEL);
+      const existing = await WebviewWindow.getByLabel(labelFor(request));
       if (existing) {
         try { await existing.destroy(); } catch { }
       }
+      if (disposed || request.signal?.aborted) return;
 
       const customUserAgent = request.headers?.['User-Agent'] || request.headers?.['user-agent'];
 
-      const webview = new WebviewWindow(WAF_WEBVIEW_LABEL, {
+      const webview = new WebviewWindow(labelFor(request), {
         url: request.url,
         title: request.title || 'Security Check - Please complete the challenge',
         width: 800,
@@ -234,16 +240,19 @@ export const WafDialog: React.FC = () => {
       webviewRef.current = webview;
 
       webview.once('tauri://created', async () => {
+        if (disposed || request.signal?.aborted) {void webview.destroy().catch(() => {}); return;}
         setVisible(true);
         // Snapshot existing cookies so we only auto-resolve on NEW ones
         try {
-          const existing = await getCookiesForUrl(request.url);
+          const existing = await getCookiesForUrl(request.url, labelFor(request));
+          if (disposed || request.signal?.aborted) return;
           initialCookiesRef.current = new Set(Object.keys(existing));
         } catch { }
         webviewReadyRef.current = true;
       });
 
       webview.once('tauri://error', (e: any) => {
+        if (disposed || request.signal?.aborted) return;
         console.error('WafDialog webview error:', e.payload);
         if (!settledRef.current) {
           settledRef.current = true;
@@ -256,6 +265,7 @@ export const WafDialog: React.FC = () => {
 
       // Closing the popup = cancel, like mobile's close button
       webview.onCloseRequested(event => {
+        if (disposed || request.signal?.aborted) return;
         if (!settledRef.current) {
           event.preventDefault();
           cancel();
@@ -263,10 +273,17 @@ export const WafDialog: React.FC = () => {
       });
     };
 
-    openWebview();
+    void openWebview().catch(error => {
+      if (disposed) return;
+      cleanup(); request.reject(error instanceof Error ? error : new Error('Failed to open verification window')); remove(request.id);
+    });
 
     return () => {
+      disposed = true;
       cleanup();
+      const opened = webviewRef.current;
+      webviewRef.current = null;
+      if (opened) void opened.destroy().catch(() => {});
     };
   }, [request?.id]);
 
@@ -286,7 +303,7 @@ export const WafDialog: React.FC = () => {
       if (cancelled || running || settledRef.current || !webviewReadyRef.current) return;
       running = true;
       try {
-        const queued = JSON.parse((await wafEval<string>(script)) || '[]') as string[];
+        const queued = JSON.parse((await wafEval<string>(script, labelFor(req))) || '[]') as string[];
         for (const raw of queued) {
           let msg: any;
           try {
@@ -325,14 +342,12 @@ export const WafDialog: React.FC = () => {
 
     const poll = async () => {
       if (cancelled || settledRef.current || !webviewReadyRef.current) return;
-      const cookieMap = await getCookiesForUrl(url);
+      const cookieMap = await getCookiesForUrl(url, labelFor(request!));
+      if (cancelled || request?.signal?.aborted || settledRef.current) return;
       if (
         cookieMap[cookieName] &&
         !initialCookiesRef.current.has(cookieName)
       ) {
-        console.log(`[WAF] cookie '${cookieName}' appeared! value:`, cookieMap[cookieName]);
-        console.log('[WAF] all cookies:', JSON.stringify(cookieMap));
-        console.log('[WAF] initial cookies were:', [...initialCookiesRef.current]);
         resolveWithPage();
       }
     };

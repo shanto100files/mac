@@ -177,6 +177,12 @@ canvas.JASSUB {
   pointer-events: auto;
 }
 
+/* Even an empty fullscreen overlay can keep WebKitGTK compositing over the
+   video. The player surface handles background input while controls sleep. */
+.player-page .player-controls-wrapper:not(.visible) {
+  display: none;
+}
+
 .player-controls-wrapper .controls-gradient-top,
 .player-controls-wrapper .controls-gradient-bottom,
 .player-controls-wrapper .player-top-bar,
@@ -1831,6 +1837,12 @@ canvas.JASSUB {
 
 .player-episode-sidebar.open {
   transform: translateX(0);
+}
+
+/* Closed panels must not leave a shadow/compositing layer over the video. */
+.player-episode-sidebar:not(.open),
+.player-episode-sidebar-backdrop:not(.visible) {
+  display: none;
 }
 
 .player-episode-sidebar-header {

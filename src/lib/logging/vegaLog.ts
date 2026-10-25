@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../../platform/host";
 import { mainStorage } from "../storage";
 import { frontendDiagnostics } from "./diagnostics";
 
@@ -112,6 +113,7 @@ export const clearLogs = async (): Promise<void> => {
 
 /** Routes console output and uncaught errors into the log file. */
 export const installVegaLog = (): void => {
+  if (!isTauriRuntime()) return;
   if (installed) return;
   installed = true;
   applyDetailed(isDetailedLoggingEnabled());

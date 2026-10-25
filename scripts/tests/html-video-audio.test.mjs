@@ -211,6 +211,27 @@ test("a user pause during preparation cancels pending autoplay for an audio rest
   assert.equal(engine.state.isPaused, true);
 });
 
+test("restoring a resume position during startup preserves autoplay and respects a user pause", async () => {
+  for (const paused of [false, true]) {
+    const {engine} = fixture("Linux x86_64");
+    const starts = [];
+    let release;
+    const preparing = new Promise(resolve => { release = resolve; });
+    engine.startStream = async (time, resume) => {
+      starts.push({time, resume});
+      if (starts.length === 1) await preparing;
+    };
+    const loading = engine.load("/media/dual-audio.mkv", {autoPlay: true});
+    while (!starts.length) await Promise.resolve();
+    if (paused) engine.pause();
+    await engine.seek(25);
+    assert.deepEqual(starts[1], {time:25, resume:!paused});
+    assert.equal(engine.state.isPaused, paused);
+    release();
+    await loading;
+  }
+});
+
 test("a later unprobed source can still discover native audio tracks", async () => {
   const { engine, metadata, setProbe } = fixture();
   await engine.load("/home/user/movie.mp4", { autoPlay: false });
@@ -219,4 +240,34 @@ test("a later unprobed source can still discover native audio tracks", async () 
   metadata();
   assert.equal(engine.state.audioTracks.length, 1);
   assert.equal(engine.state.audioTracks[0].title, "Decoded audio");
+});
+
+test("a GStreamer push failure after decoding retries remux once without video transcoding", async () => {
+  const {engine,video,starts} = fixture("Linux x86_64");
+  await engine.load("/media/movie.mkv", {autoPlay:false});
+  video.getVideoPlaybackQuality = () => ({totalVideoFrames:339,droppedVideoFrames:1});
+  engine.updateState({currentTime:18});
+  assert.equal(engine.tryPlaybackRecovery("Video error code 4: Failed to push buffer"),true);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert.equal(engine.playbackMode,"remux");
+  assert.equal(starts.at(-1).time,18);
+  assert.equal(engine.tryPlaybackRecovery("Video error code 4: Failed to push buffer"),false);
+  assert.equal(engine.playbackMode,"remux","repeated pipeline errors must not switch to CPU video transcoding");
+});
+
+test("a source rejected before any frames still uses the existing codec fallback", async () => {
+  const {engine,video} = fixture("Linux x86_64");
+  await engine.load("/media/movie.mkv", {autoPlay:false});
+  video.getVideoPlaybackQuality = () => ({totalVideoFrames:0,droppedVideoFrames:0});
+  assert.equal(engine.tryPlaybackRecovery("Video error code 4: unsupported codec"),true);
+  assert.equal(engine.playbackMode,"transcode");
+});
+
+test("a pipeline push failure before preroll is retried without assuming the codec is missing", async () => {
+  const {engine,video} = fixture("Linux x86_64");
+  await engine.load("/media/movie.mkv", {autoPlay:false});
+  video.getVideoPlaybackQuality = () => ({totalVideoFrames:0,droppedVideoFrames:0});
+  assert.equal(engine.tryPlaybackRecovery("Video error code 4: Failed to push buffer"),true);
+  assert.equal(engine.playbackMode,"remux");
 });

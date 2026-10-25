@@ -109,7 +109,13 @@ async fn relay(mut client: TcpStream, upstream_port: u16) -> std::io::Result<()>
     client.read_exact(&mut port_bytes).await?;
 
     let ips = match target {
-        Ok(ip) => vec![ip],
+        Ok(ip) => {
+            if !crate::public_network::is_public_ip(ip) {
+                send_reply(&mut client, REPLY_HOST_UNREACHABLE).await?;
+                return Err(protocol_error("private relay destination is blocked"));
+            }
+            vec![ip]
+        },
         Err(host) => {
             let ips = crate::stream_server::GLOBAL_STREAM_RESOLVER
                 .resolve_for_bypass(&host)

@@ -1,5 +1,5 @@
 import React from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl as openUrl } from "../../platform/externalLinks";
 import {
   LuExternalLink as ExternalLink,
   LuGithub as GitHub,

@@ -6,7 +6,7 @@ import {
   type ComponentType,
   type MouseEvent as ReactMouseEvent,
 } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl as openUrl } from "../../platform/externalLinks";
 import {
   LuBookOpen,
   LuCalendar,

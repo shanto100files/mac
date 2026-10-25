@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import ts from 'typescript';
+import {mediaUrl, networkUrl, hostUrl} from './helpers/platform-modules.mjs';
 
 const moduleUrl=source=>'data:text/javascript;base64,'+Buffer.from(source).toString('base64');
 const shared=moduleUrl(`export class LibmediaEngine {
@@ -19,11 +20,10 @@ const shared=moduleUrl(`export class LibmediaEngine {
  async loadExternalSubtitle(sub){this.calls.push(['external',sub.source.name,sub.lang]);this.subtitleTracks=[{id:70,type:'subtitle',label:'English',language:sub.lang,selected:true}];return 70;}
  async destroy(){this.destroyed=true;}
 }`);
-const native=moduleUrl(`export async function invoke(command){if(command!=='get_stream_proxy_port')throw new Error(command);return 9911;}`);
 const styles=moduleUrl(`export const config={fontFamily:'Arial',fontSize:40,fontWeight:400,outlineSize:2,bottomPadding:35,textColor:'#FFFFFF',outlineColor:'#000000',shadowColor:'#000000',shadowSize:2,shadowStyle:'drop'};export function getSubtitleStyleConfig(){return config;}`);
 const input=await readFile(new URL('../src/lib/player/LibmediaPlayerAdapter.ts',import.meta.url),'utf8');
 const js=ts.transpileModule(input,{compilerOptions:{target:ts.ScriptTarget.ES2023,module:ts.ModuleKind.ESNext}}).outputText
- .replaceAll("'@tauri-apps/api/core'",JSON.stringify(native)).replaceAll("'@vega/libmedia-engine'",JSON.stringify(shared)).replaceAll("'./subUtils'",JSON.stringify(styles)).replace("import './libmedia-subtitles.css';",'');
+ .replaceAll("'../../platform/mediaDelivery'",JSON.stringify(mediaUrl)).replaceAll("'../../platform/network'",JSON.stringify(networkUrl)).replaceAll("'../../platform/host'",JSON.stringify(hostUrl)).replaceAll("'@vega/libmedia-engine'",JSON.stringify(shared)).replaceAll("'./subUtils'",JSON.stringify(styles)).replace("import './libmedia-subtitles.css';",'');
 const {LibmediaPlayerAdapter}=await import(moduleUrl(js));
 const {LibmediaEngine}=await import(shared);
 globalThis.document={createElement:()=>({style:{setProperty(key,value){this[key]=value;}},remove(){this.removed=true;}})};
@@ -81,6 +81,17 @@ test('external subtitle metadata is listed without downloading every language; s
   await adapter.selectTrack('sid',-1000);assert.equal(reads,1);
   assert.equal(adapter.state.subtitleTracks.find(track=>track.id===70).external,true);
   await adapter.selectTrack('sid',70);assert.equal(reads,1);
+ }finally{globalThis.fetch=original;adapter.destroy();}
+});
+
+test('browser-selected subtitle keeps its filename format when loaded from a blob URL',async()=>{
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>new Response('WEBVTT\n\n00:00.000 --> 00:03.000\nBrowser subtitle');
+ const adapter=new LibmediaPlayerAdapter(anchor());
+ try{
+  await adapter.load('https://example.invalid/movie.mkv');
+  await adapter.addSubtitleFile('blob:https://example.invalid/selected-file','captions.vtt');
+  assert.deepEqual(LibmediaEngine.latest.calls.at(-1),['external','subtitle.vtt',undefined]);
  }finally{globalThis.fetch=original;adapter.destroy();}
 });
 test('HLS quality alternatives use the existing desktop video selection interface',async()=>{

@@ -921,7 +921,7 @@ export class HtmlVideoEngine implements PlayerEngine {
       if (
         err?.code === 4 && // MEDIA_ERR_SRC_NOT_SUPPORTED
         this.playbackMode === "remux" &&
-        this.tryTranscodeFallback(msg)
+        this.tryPlaybackRecovery(msg)
       ) {
         return;
       }
@@ -933,10 +933,11 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   /**
-   * Restarts the current stream as an FFmpeg H.264 transcode, once per load.
+   * Retries once per load. GStreamer push failures restart with the same
+   * codecs; a backend pipeline error is not evidence of an unsupported codec.
    * False when that is not possible or was already tried.
    */
-  private tryTranscodeFallback(reason: string): boolean {
+  private tryPlaybackRecovery(reason: string): boolean {
     if (
       this.hasTriedCodecFallback ||
       this.isCodecFallbackInProgress ||
@@ -946,12 +947,13 @@ export class HtmlVideoEngine implements PlayerEngine {
     ) {
       return false;
     }
+    const restartRemux = this.playbackMode === "remux" && /failed to push buffer/i.test(reason);
     console.warn(
-      `[HtmlVideoEngine] Switching to transcode: ${reason} (${this.describePlayback()})`,
+      `[HtmlVideoEngine] ${restartRemux ? "Restarting remux after pipeline failure" : "Switching to transcode"}: ${reason} (${this.describePlayback()})`,
     );
     this.hasTriedCodecFallback = true;
     this.isCodecFallbackInProgress = true;
-    this.playbackMode = "transcode";
+    if (!restartRemux) this.playbackMode = "transcode";
     const fallbackLoadId = this.loadRequestId;
     const resumeAfterPrepare = !this.state.isPaused;
     const restartTime = Math.max(
@@ -1032,7 +1034,7 @@ export class HtmlVideoEngine implements PlayerEngine {
         console.error(
           `[HtmlVideoEngine] Black screen: time advances but no video frames are decoded (${this.describePlayback()})`,
         );
-        this.tryTranscodeFallback("no video frames decoded");
+        this.tryPlaybackRecovery("no video frames decoded");
         return;
       }
       console.info(`[HtmlVideoEngine] Playback check: ${this.describePlayback()}`);
@@ -2111,7 +2113,8 @@ export class HtmlVideoEngine implements PlayerEngine {
       return;
     }
 
-    const wasPlaying = !this.video.paused && !this.state.isPaused;
+    // Resume-position restoration can seek before the first play() completes.
+    const wasPlaying = this.pendingAutoplay || (!this.video.paused && !this.state.isPaused);
     this.updateState({ currentTime: clamped });
 
     try {

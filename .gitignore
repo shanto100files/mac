@@ -10,6 +10,10 @@ lerna-debug.log*
 # Node / Frontend
 node_modules
 dist
+dist-web
+dist-extension
+/browser-extension/cookieRules.mjs
+/browser-extension/THIRD_PARTY_NOTICES.txt
 dist-ssr
 *.local
 .env
@@ -57,3 +61,10 @@ src-tauri/lib/*.dll
 /desktop-libmedia-*.log
 /test-results/
 /playwright-report/
+
+# Generated provider SDK (contains no providers); rebuilt before dev/build.
+/src/lib/services/generated/
+/public/vega-provider-runtime-notices.txt
+/security-*.log
+/dist-tv/
+/tv/native-host/target/

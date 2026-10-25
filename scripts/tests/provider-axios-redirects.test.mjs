@@ -1,46 +1,25 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {runInNewContext} from 'node:vm';
-import {fileURLToPath} from 'node:url';
-import {rolldown} from 'rolldown';
+import {readFileSync} from 'node:fs';
+import {getQuickJS} from 'quickjs-emscripten';
 
-const bundle = await rolldown({
-  input: fileURLToPath(new URL('../../src/lib/services/providerSandbox.worker.ts', import.meta.url)),
-  platform: 'browser',
-});
-const {output} = await bundle.generate({format: 'iife'});
-await bundle.close();
-const source = output.find(chunk => chunk.type === 'chunk').code;
+const source=readFileSync(new URL('../../src/lib/services/generated/providerSdk.js',import.meta.url),'utf8');
 
 async function invoke() {
   const requests = [];
   const result = await new Promise((resolve, reject) => {
-    let receive;
-    runInNewContext(source, {
-      Response, Request, Headers, URL, URLSearchParams, AbortController, atob, btoa,
-      TextEncoder, TextDecoder, Uint8Array, ArrayBuffer,
-      setTimeout, clearTimeout, setInterval, clearInterval, console,
-      addEventListener: (_type, handler) => { receive = handler; },
-      postMessage: async message => {
-        if (message.type === 'result') {
-          if (message.error) reject(new Error(message.error));
-          else resolve(message.result);
-        }
-        if (message.type !== 'rpc') return;
-        requests.push(message.args);
-        const manual = message.args.init.redirect === 'manual';
-        const bytes = new TextEncoder().encode(manual ? '' : 'redirected page');
-        await receive({data: {
-          type: 'rpc-result', token: message.token, id: message.id,
-          result: {
-            status: manual ? 302 : 200, statusText: manual ? 'Found' : 'OK',
-            url: manual ? message.args.url : 'https://new.example/s/share',
-            headers: manual ? [['Location', 'https://files.example/video.mkv']] : [],
-            data: bytes.buffer,
-          },
-        }});
-      },
-    });
+    void getQuickJS().then(engine=>{
+    const vm=engine.newContext(); const runtime=vm.runtime;
+    const evaluate=code=>{const value=vm.evalCode(code);if(value.error){const error=vm.dump(value.error);value.error.dispose();reject(new Error(error.message));return;}value.value.dispose();while(runtime.hasPendingJob()){const jobs=runtime.executePendingJobs();if(jobs.error){const error=vm.dump(jobs.error);jobs.error.dispose();reject(new Error(error.message));break;}}};
+    const send=vm.newFunction('__hostSend',handle=>{const message=JSON.parse(vm.getString(handle));queueMicrotask(()=>{
+      requests.push(message.args);
+      const manual=message.args.init.redirect==='manual';
+      const bytes=new TextEncoder().encode(manual?'':'redirected page');
+      evaluate('__providerReply('+JSON.stringify({id:message.id,result:{status:manual?302:200,statusText:manual?'Found':'OK',url:manual?message.args.url:'https://new.example/s/share',headers:manual?[['Location','https://files.example/video.mkv']]:[],data:Array.from(bytes)}})+')');
+    });});vm.setProp(vm.global,'__hostSend',send);send.dispose();
+    const finish=vm.newFunction('__hostFinish',handle=>{const message=JSON.parse(vm.getString(handle));queueMicrotask(()=>{vm.dispose();message.error?reject(new Error(message.error)):resolve(message.result);});});vm.setProp(vm.global,'__hostFinish',finish);finish.dispose();
+    evaluate('const __randomBytes=[];'+source);
+    const receive=async ({data})=>evaluate('__providerStart('+JSON.stringify(data)+')');
     void receive({data: {
       type: 'invoke', token: 'redirect-regression', exportName: 'getStream', state: {},
       args: {},
@@ -60,6 +39,7 @@ async function invoke() {
         };
       };`,
     }}).catch(reject);
+    }).catch(reject);
   });
   return {result, requests};
 }

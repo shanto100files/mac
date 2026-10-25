@@ -1,449 +1,94 @@
-import axios, { AxiosHeaders, type AxiosAdapter } from "axios";
-import * as cheerio from "cheerio";
-import { Crypto } from "../../platform/crypto";
-import { headers as commonHeaders } from "../providers/headers";
-import { getErrorMessage } from "./providerErrors";
+import {newQuickJSWASMModuleFromVariant, newVariant, type QuickJSContext, type QuickJSRuntime} from 'quickjs-emscripten';
+import variant from '@jitl/quickjs-wasmfile-release-sync';
+import wasmUrl from '@jitl/quickjs-wasmfile-release-sync/wasm?url';
+import sdk from './generated/providerSdk.js?raw';
+import {Crypto} from '../../platform/crypto';
 
-type RpcOperation =
-  | "fetch"
-  | "getBaseUrl"
-  | "openWebView"
-  | "kvGet"
-  | "kvSet"
-  | "kvDelete"
-  | "kvKeys"
-  | "kvClear";
+// Trusted transport only. All provider code and SDK objects live in a separate
+// WASM heap. No browser objects or JS functions cross that boundary.
+let vm: QuickJSContext | undefined;
+let runtime: QuickJSRuntime | undefined;
+let token = '';
+let completed = false;
+let totalRequests = 0;
+const active = new Set<number>();
+let cpuRemaining = 5_000;
+let startedAt = 0;
+const deadline = Date.now() + 120_000;
 
-type HostMessage =
-  | {
-      type: "invoke";
-      token: string;
-      moduleCode: string;
-      exportName?: string;
-      args?: Record<string, unknown>;
-      state: Record<string, unknown>;
-    }
-  | {
-      type: "rpc-result";
-      token: string;
-      id: number;
-      result?: unknown;
-      error?: string;
-    };
-
-type SerializedResponse = {
-  status: number;
-  statusText: string;
-  url: string;
-  headers: Array<[string, string]>;
-  data: ArrayBuffer;
-};
-
-const workerScope = globalThis as typeof globalThis & {
-  postMessage: (message: unknown) => void;
-};
-const sendMessage = workerScope.postMessage.bind(workerScope);
-const addMessageListener = workerScope.addEventListener.bind(workerScope);
-let activeToken = "";
-let nextRpcId = 0;
-const pendingRpc = new Map<
-  number,
-  { resolve: (value: unknown) => void; reject: (reason: Error) => void }
->();
-
-const disableAmbientCapability = (name: string) => {
+function fail(error: unknown) {
+  if (completed) return;
+  completed = true;
+  self.postMessage({type:'result', token, error:error instanceof Error ? error.message : String(error)});
+}
+function evaluate(code: string) {
+  if (!vm || !runtime || completed) return;
+  startedAt = Date.now();
   try {
-    Object.defineProperty(workerScope, name, {
-      configurable: false,
-      enumerable: false,
-      value: undefined,
-      writable: false,
-    });
-  } catch {
-    // Some WebView globals are non-configurable; function parameters below still shadow them.
-  }
-};
-
-[
-  "fetch",
-  "XMLHttpRequest",
-  "WebSocket",
-  "EventSource",
-  "postMessage",
-  "importScripts",
-  "Worker",
-  "SharedWorker",
-  "BroadcastChannel",
-  "indexedDB",
-  "caches",
-].forEach(disableAmbientCapability);
-
-const rpc = <T>(operation: RpcOperation, args: unknown): Promise<T> => {
-  const id = ++nextRpcId;
-  return new Promise<T>((resolve, reject) => {
-    pendingRpc.set(id, {
-      resolve: resolve as (value: unknown) => void,
-      reject,
-    });
-    sendMessage({ type: "rpc", token: activeToken, id, operation, args });
-  });
-};
-
-const serializeBody = async (body: BodyInit | null | undefined) => {
-  if (body == null) {
-    return { data: undefined, contentType: null };
-  }
-  const serialized = new Response(body);
-  return {
-    data: await serialized.arrayBuffer(),
-    contentType: serialized.headers.get("content-type"),
-  };
-};
-
-const headerEntries = (source: unknown): Array<[string, string]> => {
-  const entries: Array<[string, string]> = [];
-  if (!source) return entries;
-  if (typeof (source as Headers).forEach === "function") {
-    (source as Headers).forEach((value, key) => entries.push([key, value]));
-    return entries;
-  }
-  if (Array.isArray(source)) {
-    for (const pair of source) {
-      if (Array.isArray(pair) && pair.length >= 2 && pair[0] && pair[1] != null) {
-        entries.push([String(pair[0]), String(pair[1])]);
-      }
+    const result = vm.evalCode(code);
+    if (result.error) {const error = vm.dump(result.error); result.error.dispose(); throw new Error(error?.message || 'Provider execution failed');}
+    result.value.dispose();
+    let jobs = 0;
+    while (runtime.hasPendingJob() && !completed) {
+      if (++jobs > 10_000) throw new Error('Provider job limit exceeded');
+      const pending = runtime.executePendingJobs(32);
+      if (pending.error) {const error = vm.dump(pending.error); pending.error.dispose(); throw new Error(error?.message || 'Provider job failed');}
     }
-    return entries;
-  }
-  if (typeof source === "object") {
-    for (const [key, value] of Object.entries(source as Record<string, unknown>)) {
-      if (value != null) {
-        entries.push([key, String(value)]);
-      }
+  } finally {cpuRemaining -= Date.now() - startedAt;}
+}
+function reply(id: number, result?: unknown, error?: string) {
+  if (!active.delete(id) || completed) return;
+  if (result && typeof result === 'object' && 'data' in result && (result as any).data instanceof ArrayBuffer) result = {...result, data:Array.from(new Uint8Array((result as any).data))};
+  const message = JSON.stringify({id, result, error});
+  if (message.length > 40 * 1024 * 1024) {fail(new Error('Provider response exceeds serialization limit')); return;}
+  try {evaluate(`__providerReply(${message})`);} catch (failure) {fail(failure);}
+}
+async function request(message: string) {
+  let id: number | undefined;
+  try {
+    if (message.length > 12 * 1024 * 1024) throw new Error('Provider request is too large');
+    const parsed = JSON.parse(message); id = parsed.id;
+    if (!Number.isSafeInteger(id) || active.has(id!) || active.size >= 16 || ++totalRequests > 256) throw new Error('Provider request limit exceeded');
+    active.add(id!);
+    if (parsed.operation === '__sleep') {
+      const ms = parsed.args?.ms;
+      if (!Number.isFinite(ms) || ms < 0 || ms > 30_000) throw new Error('Invalid provider timer');
+      setTimeout(() => reply(id!), ms); return;
     }
-  }
-  return entries;
-};
-
-const sandboxFetch = async (
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-): Promise<Response & { rawHeaders?: Array<[string, string]> }> => {
-  const request = input instanceof Request ? input : undefined;
-  const url = request?.url ?? input.toString();
-  const mergedHeaders: Array<[string, string]> = [
-    ...headerEntries(request?.headers),
-    ...headerEntries(init.headers),
-  ];
-  const serializedBody = await serializeBody(init.body);
-  if (
-    serializedBody.contentType &&
-    !mergedHeaders.some(([k]) => k.toLowerCase() === "content-type")
-  ) {
-    mergedHeaders.push(["Content-Type", serializedBody.contentType]);
-  }
-
-  const response = await rpc<SerializedResponse>("fetch", {
-    url,
-    init: {
-      method: init.method ?? request?.method,
-      headers: mergedHeaders,
-      body: serializedBody.data,
-      redirect: init.redirect,
-    },
-  });
-
-  const res = new Response(response.data, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  }) as Response & { rawHeaders?: Array<[string, string]> };
-  // A constructed Response has an empty URL; preserve the native final URL.
-  Object.defineProperty(res, "url", { value: response.url });
-  res.rawHeaders = response.headers;
-  return res;
-};
-
-const sandboxAxiosAdapter: AxiosAdapter = async (config) => {
-  let url = config.url ?? "";
-  if (config.baseURL && !/^https?:/i.test(url)) {
-    url = `${config.baseURL.replace(/\/+$/, "")}/${url.replace(/^\/+/, "")}`;
-  }
-  if (config.params) {
-    const query = new URLSearchParams(config.params).toString();
-    if (query) url += `${url.includes("?") ? "&" : "?"}${query}`;
-  }
-
-  const response = await sandboxFetch(url, {
-    method: config.method?.toUpperCase(),
-    headers: config.headers as HeadersInit,
-    body:
-      config.data == null || typeof config.data === "string"
-        ? config.data
-        : JSON.stringify(config.data),
-    redirect: config.maxRedirects === 0 ? "manual" : "follow",
-  });
-  const responseHeaders = new AxiosHeaders();
-  response.headers.forEach((value, key) => responseHeaders.set(key, value));
-
-  const rawHeaders = (response as any).rawHeaders as Array<[string, string]> | undefined;
-  if (rawHeaders) {
-    const setCookies: string[] = [];
-    for (const [key, value] of rawHeaders) {
-      if (key.toLowerCase() === "set-cookie" || key.toLowerCase() === "x-set-cookie") {
-        setCookies.push(value);
-      }
+    if (parsed.operation === '__digest') {
+      if (typeof parsed.args?.data !== 'string' || parsed.args.data.length > 2_000_000 || !['SHA-1','SHA-256','SHA-384','SHA-512'].includes(parsed.args?.algorithm)) throw new Error('Invalid provider digest');
+      reply(id!, await Crypto.digestStringAsync(parsed.args.algorithm, parsed.args.data)); return;
     }
-    if (setCookies.length > 0) {
-      responseHeaders.set("set-cookie", setCookies);
-      responseHeaders.set("x-set-cookie", setCookies);
-    }
-  } else {
-    const xSetCookie = response.headers.get("x-set-cookie");
-    if (xSetCookie) {
-      responseHeaders.set("set-cookie", xSetCookie);
-      responseHeaders.set("x-set-cookie", xSetCookie);
-    }
-  }
-
-  let data: unknown;
-  if (config.responseType === "arraybuffer") {
-    data = await response.arrayBuffer();
-  } else if (config.responseType === "blob") {
-    data = await response.blob();
-  } else {
-    const text = await response.text();
-    if (config.responseType === "text") {
-      data = text;
-    } else {
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch {
-        data = text;
-      }
-    }
-  }
-
-  const result = {
-    data,
-    status: response.status,
-    statusText: response.statusText,
-    headers: responseHeaders,
-    config,
-    request: {
-      url,
-      responseURL: response.url,
-      res: { responseUrl: response.url },
-    },
-  };
-
-  const validateStatus =
-    config.validateStatus ||
-    ((status: number) => status >= 200 && status < 300);
-
-  if (!validateStatus(response.status)) {
-    const error: any = new Error(
-      "Request failed with status code " + response.status,
-    );
-    error.config = config;
-    error.request = { url };
-    error.response = result;
-    error.isAxiosError = true;
-    error.status = response.status;
-    throw error;
-  }
-
-  return result;
-};
-
-axios.defaults.adapter = sandboxAxiosAdapter;
-
-let providerGlobal: Record<string, unknown> = {};
-const kvStore = Object.freeze({
-  get: <T = unknown>(key: string): Promise<T | undefined> =>
-    rpc<T | undefined>("kvGet", { key }),
-  set: (key: string, value: unknown): Promise<void> =>
-    rpc<void>("kvSet", { key, value }),
-  delete: (key: string): Promise<boolean> =>
-    rpc<boolean>("kvDelete", { key }),
-  keys: (): Promise<string[]> =>
-    rpc<string[]>("kvKeys", {}),
-  clear: (): Promise<void> =>
-    rpc<void>("kvClear", {}),
-});
-
-const providerContext = Object.freeze({
-  axios,
-  cheerio,
-  Crypto: Object.freeze(Crypto),
-  commonHeaders: { ...commonHeaders },
-  getBaseUrl: (providerValue: string) =>
-    rpc<string>("getBaseUrl", { providerValue }),
-  openWebView: (url: string, options?: unknown) =>
-    rpc("openWebView", { url, options }),
-  kvStore,
-});
-
-const createAwaiter = () =>
-  function __awaiter(
-    thisArg: unknown,
-    args: unknown,
-    PromiseConstructor: PromiseConstructor | undefined,
-    generator: (...generatorArgs: unknown[]) => Generator,
-  ) {
-    const Constructor = PromiseConstructor ?? Promise;
-    const adopt = (value: unknown) =>
-      value instanceof Constructor
-        ? value
-        : new Constructor((resolve) => resolve(value));
-    return new Constructor((resolve, reject) => {
-      const fulfilled = (value: unknown) => {
-        try {
-          step(iterator.next(value));
-        } catch (error) {
-          reject(error);
-        }
-      };
-      const rejected = (value: unknown) => {
-        try {
-          step(iterator.throw(value));
-        } catch (error) {
-          reject(error);
-        }
-      };
-      const step = (result: IteratorResult<unknown>) => {
-        if (result.done) resolve(result.value);
-        else adopt(result.value).then(fulfilled, rejected);
-      };
-      const iterator = generator.apply(thisArg, (args as unknown[]) ?? []);
-      step(iterator.next());
-    });
-  };
-
-const executeProvider = async (
-  moduleCode: string,
-  exportName?: string,
-  args: Record<string, unknown> = {},
-) => {
-  const exports: Record<string, unknown> = {};
-  const module = { exports };
-  const executeModule = new Function(
-    "exports",
-    "module",
-    "require",
-    "console",
-    "Promise",
-    "setTimeout",
-    "clearTimeout",
-    "setInterval",
-    "clearInterval",
-    "fetch",
-    "__awaiter",
-    "providerGlobal",
-    "globalThis",
-    "self",
-    "postMessage",
-    "XMLHttpRequest",
-    "WebSocket",
-    "EventSource",
-    "Worker",
-    "SharedWorker",
-    "BroadcastChannel",
-    "indexedDB",
-    "caches",
-    `"use strict";\n${moduleCode}`,
-  );
-
-  executeModule(
-    exports,
-    module,
-    () => ({}),
-    console,
-    Promise,
-    setTimeout,
-    clearTimeout,
-    setInterval,
-    clearInterval,
-    sandboxFetch,
-    createAwaiter(),
-    providerGlobal,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-  );
-
-  const moduleExports = module.exports as Record<string, unknown>;
-  if (!exportName) {
-    const resolvedExports: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(moduleExports)) {
-      if (typeof value === "function") {
-        try {
-          resolvedExports[key] = await value({
-            ...args,
-            signal: new AbortController().signal,
-            providerContext,
-          });
-        } catch {
-          resolvedExports[key] = value;
-        }
-      } else {
-        resolvedExports[key] = value;
-      }
-    }
-    return resolvedExports;
-  }
-  const providerFunction = moduleExports[exportName];
-  if (typeof providerFunction !== "function") {
-    throw new Error(`Provider module does not export ${exportName}`);
-  }
-  return providerFunction({
-    ...args,
-    signal: new AbortController().signal,
-    providerContext,
-  });
-};
-
-addMessageListener("message", async (event: MessageEvent<HostMessage>) => {
+    if (!['fetch','getBaseUrl','openWebView','kvGet','kvSet','kvDelete','kvKeys','kvClear'].includes(parsed.operation)) throw new Error('Unsupported provider operation');
+    self.postMessage({type:'rpc', token, id, operation:parsed.operation, args:parsed.args});
+  } catch (error) {if (id !== undefined && active.has(id)) reply(id, undefined, error instanceof Error ? error.message : String(error)); else fail(error);}
+}
+self.addEventListener('message', async event => {
   const message = event.data;
-  if (message.type === "rpc-result") {
-    if (message.token !== activeToken) return;
-    const pending = pendingRpc.get(message.id);
-    if (!pending) return;
-    pendingRpc.delete(message.id);
-    if (message.error) pending.reject(new Error(message.error));
-    else pending.resolve(message.result);
-    return;
-  }
-
-  if (message.type !== "invoke" || activeToken) return;
-  activeToken = message.token;
-  providerGlobal = message.state;
+  if (message?.type === 'rpc-result' && message.token === token) {reply(message.id, message.result, message.error); return;}
+  if (message?.type !== 'invoke' || token) return;
+  token = message.token;
   try {
-    const result = await executeProvider(
-      message.moduleCode,
-      message.exportName,
-      message.args,
-    );
-    sendMessage({
-      type: "result",
-      token: activeToken,
-      result,
-      state: providerGlobal,
+    if (typeof message.moduleCode !== 'string' || message.moduleCode.length > 2_000_000) throw new Error('Invalid provider module');
+    const engine = await newQuickJSWASMModuleFromVariant(newVariant(variant,
+      message.engineModule instanceof WebAssembly.Module
+        ? {wasmModule: message.engineModule} : {wasmLocation: wasmUrl}));
+    runtime = engine.newRuntime();
+    runtime.setMemoryLimit(128 * 1024 * 1024);
+    runtime.setMaxStackSize(512 * 1024);
+    runtime.setInterruptHandler(() => Date.now() >= deadline || Date.now() - startedAt >= cpuRemaining);
+    vm = runtime.newContext(); // No loader: imports cannot access host or remote modules.
+    const send = vm.newFunction('__hostSend', value => {const text = vm!.getString(value); queueMicrotask(() => {if (!completed) void request(text);});});
+    vm.setProp(vm.global, '__hostSend', send); send.dispose();
+    const finish = vm.newFunction('__hostFinish', value => {
+      if (completed) return;
+      const text = vm!.getString(value);
+      if (text.length > 8 * 1024 * 1024) {fail(new Error('Provider result is too large')); return;}
+      const result = JSON.parse(text); completed = true;
+      self.postMessage({type:'result', token, result:result.result, state:result.state, error:result.error});
     });
-  } catch (error) {
-    sendMessage({
-      type: "result",
-      token: activeToken,
-      error: getErrorMessage(error),
-    });
-  }
+    vm.setProp(vm.global, '__hostFinish', finish); finish.dispose();
+    const random = Array.from(crypto.getRandomValues(new Uint8Array(4096)));
+    evaluate(`const __randomBytes=${JSON.stringify(random)};\n${sdk}\n__providerStart(${JSON.stringify(message)})`);
+  } catch (error) {fail(error);}
 });

@@ -1,5 +1,6 @@
 import {mainStorage} from './StorageService';
 import {sourceTokenStorage} from './sourceTokenStorage';
+import type {ProviderIntegrity} from '../services/providerIntegrity';
 
 /**
  * Provider Source
@@ -30,6 +31,8 @@ export interface ProviderExtension {
   hasSettings?: boolean;
   /** Folder of the provider's files under the source; dist/{value} if unset. */
   path?: string;
+  /** Optional SHA-256 module digests published in the source manifest. */
+  integrity?: ProviderIntegrity;
 }
 
 /**

@@ -438,6 +438,8 @@ fn linux_session_info() -> String {
     let overrides: Vec<String> = [
         "WEBKIT_DISABLE_DMABUF_RENDERER",
         "WEBKIT_DISABLE_COMPOSITING_MODE",
+        "WEBKIT_GST_ALLOW_PLAYBACK_OF_INVISIBLE_VIDEOS",
+        "WEBKIT_SKIA_ENABLE_CPU_RENDERING",
         "GDK_BACKEND",
         "LIBVA_DRIVER_NAME",
         "GST_PLUGIN_PATH",

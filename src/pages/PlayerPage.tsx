@@ -6,6 +6,7 @@ import React, {
   useMemo,
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import {isTauriRuntime} from "../platform/host";
 import type { MpvTrack } from "../lib/player/PlayerEngine";
 import { usePlayerEngine } from "../lib/hooks/usePlayerEngine";
 import { useMpvPlayer } from "../lib/hooks/useMpvPlayer";
@@ -783,6 +784,12 @@ const DesktopPlayer: React.FC<any> = ({
     return typeof saved === "number" && saved > 0 ? saved : 1.0;
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    if (isTauriRuntime()) return;
+    const update = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", update);
+    return () => document.removeEventListener("fullscreenchange", update);
+  }, []);
   const [isPip, setIsPip] = useState(false);
   const [isCropped, setIsCropped] = useState(false);
   const [zoomLevel, setZoomLevel] = useState(() =>
@@ -1289,6 +1296,7 @@ const DesktopPlayer: React.FC<any> = ({
 
   useEffect(() => {
     return () => {
+      if (!isTauriRuntime()) return;
       const win = getCurrentWindow();
       const previousState = preFullscreenStateRef.current;
       void (async () => {
@@ -1601,7 +1609,6 @@ const DesktopPlayer: React.FC<any> = ({
     else scheduleHide();
   }, [scheduleHide]);
 
-  const handleMouseMove = useCallback(() => revealControls(), [revealControls]);
   const handleBackgroundClick = useCallback(() => {
     if (showControls) {
       setShowControls(false);
@@ -1636,6 +1643,13 @@ const DesktopPlayer: React.FC<any> = ({
   }, [applyZoom]);
 
   const toggleFullscreen = useCallback(async () => {
+    if (!isTauriRuntime()) {
+      try {
+        if (document.fullscreenElement) await document.exitFullscreen();
+        else await document.documentElement.requestFullscreen();
+      } catch (error) {toast(error instanceof Error ? error.message : "Fullscreen unavailable");}
+      return;
+    }
     const win = getCurrentWindow();
     try {
       // Linux window managers apply fullscreen asynchronously. Do not mistake
@@ -1725,6 +1739,7 @@ const DesktopPlayer: React.FC<any> = ({
   }, [isWindows]);
 
   const togglePip = useCallback(async () => {
+    if (!isTauriRuntime()) return;
     try {
       const win = getCurrentWindow();
       const currentPip = await win.isAlwaysOnTop();
@@ -1919,6 +1934,7 @@ const DesktopPlayer: React.FC<any> = ({
         key === "back" ||
         key === "browserback" ||
         e.keyCode === 27 ||
+        e.keyCode === 461 ||
         e.keyCode === 10009
       ) {
         e.preventDefault();
@@ -2209,7 +2225,18 @@ const DesktopPlayer: React.FC<any> = ({
   return (
     <div
       className={`player-page ${showControls ? "controls-visible" : ""}`}
-      onMouseMove={handleMouseMove}
+      onClick={(event) => {
+        if (event.target === event.currentTarget ||
+          (event.target instanceof Element && event.target.closest(".player-video-wrapper"))) {
+          handleBackgroundClick();
+        }
+      }}
+      onDoubleClick={(event) => {
+        if (event.target === event.currentTarget ||
+          (event.target instanceof Element && event.target.closest(".player-video-wrapper"))) {
+          void toggleFullscreen();
+        }
+      }}
       style={{
         // mpv draws under the webview: let it show through once playing.
         backgroundColor:

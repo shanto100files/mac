@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import {isTauriRuntime} from '../../platform/host';
 import { getVersion } from '@tauri-apps/api/app';
 import { ask, message } from '@tauri-apps/plugin-dialog';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -20,6 +21,7 @@ const isNewer = (latest: string, current: string) => {
 };
 
 export const checkAppUpdates = async (manual = false) => {
+  if (!isTauriRuntime()) return;
   try {
     const userAgent = navigator.userAgent.toLowerCase();
 

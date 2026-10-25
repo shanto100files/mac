@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { settingsStorage } from "../storage/SettingsStorage";
 
 type Direction = "up" | "down" | "left" | "right";
 
@@ -15,6 +16,7 @@ const REPEAT_INTERVAL_MS = 90;
 const STICK_DEADZONE = 0.45;
 
 export function useGamepadNavigation() {
+  const [enabled, setEnabled] = useState(() => settingsStorage.isTvModeEnabled());
   const rafRef = useRef<number | null>(null);
   const prevButtonsRef = useRef<boolean[]>([]);
   const dirStatesRef = useRef<Record<Direction, DirectionState>>({
@@ -25,6 +27,23 @@ export function useGamepadNavigation() {
   });
 
   useEffect(() => {
+    const update = () => setEnabled(settingsStorage.isTvModeEnabled());
+    window.addEventListener("vega_tv_mode_changed", update);
+    window.addEventListener("storage", update);
+    return () => {
+      window.removeEventListener("vega_tv_mode_changed", update);
+      window.removeEventListener("storage", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const stop = () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      prevButtonsRef.current = [];
+      Object.values(dirStatesRef.current).forEach(state => { state.isHeld = false; });
+    };
     const notifyActivity = () => {
       window.dispatchEvent(new CustomEvent("vega:remote-activity"));
     };
@@ -82,6 +101,8 @@ export function useGamepadNavigation() {
     };
 
     const pollGamepads = () => {
+      rafRef.current = null;
+      if (document.visibilityState === "hidden") { stop(); return; }
       const gamepads = typeof navigator.getGamepads === "function" ? navigator.getGamepads() : [];
       let activeGamepad: Gamepad | null = null;
 
@@ -94,7 +115,7 @@ export function useGamepadNavigation() {
       }
 
       if (!activeGamepad) {
-        rafRef.current = requestAnimationFrame(pollGamepads);
+        stop();
         return;
       }
 
@@ -188,12 +209,26 @@ export function useGamepadNavigation() {
       rafRef.current = requestAnimationFrame(pollGamepads);
     };
 
-    rafRef.current = requestAnimationFrame(pollGamepads);
+    // Wake for connection/visibility events instead of polling every frame
+    // when there is no controller. Only an active controller needs a loop.
+    const start = () => {
+      if (rafRef.current === null) pollGamepads();
+    };
+    const reconnect = () => { stop(); start(); };
+    const visibility = () => {
+      if (document.visibilityState === "hidden") stop();
+      else start();
+    };
+    window.addEventListener("gamepadconnected", start);
+    window.addEventListener("gamepaddisconnected", reconnect);
+    document.addEventListener("visibilitychange", visibility);
+    start();
 
     return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-      }
+      stop();
+      window.removeEventListener("gamepadconnected", start);
+      window.removeEventListener("gamepaddisconnected", reconnect);
+      document.removeEventListener("visibilitychange", visibility);
     };
-  }, []);
+  }, [enabled]);
 }

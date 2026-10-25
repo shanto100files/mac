@@ -21,6 +21,9 @@ source directory: `npm run sync:libmedia -- C:\path\to\libmedia-engine`.
 Desktop's existing loopback server delivers local files, original remote byte
 ranges and rewritten HLS references with provider headers. Libmedia does its
 own demuxing/decoding; this engine does not request FFmpeg remux/transcode.
+Source preparation now lives in the platform layer rather than inside the
+player adapter; see [platform networking](platform-networking.md). Browser and
+TV hosts use that same boundary without depending on a Chrome extension.
 External subtitles are listed from metadata and downloaded only when selected.
 HLS qualities use the existing quality menu when libmedia exposes alternatives.
 

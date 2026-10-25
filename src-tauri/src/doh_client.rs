@@ -90,6 +90,8 @@ pub fn build_hickory_resolver(provider: &str, custom_url: Option<String>) -> Tok
 #[derive(Clone)]
 struct CustomDnsResolver {
     resolver: Arc<TokioAsyncResolver>,
+    public_only: bool,
+    system: bool,
 }
 
 impl CustomDnsResolver {
@@ -97,6 +99,8 @@ impl CustomDnsResolver {
         let resolver = build_hickory_resolver(provider, custom_url);
         Self {
             resolver: Arc::new(resolver),
+            public_only: false,
+            system: provider.eq_ignore_ascii_case("system") || provider.eq_ignore_ascii_case("none"),
         }
     }
 }
@@ -106,14 +110,18 @@ impl Resolve for CustomDnsResolver {
     fn resolve(&self, name: wreq::dns::Name) -> wreq::dns::Resolving {
         let resolver = self.resolver.clone();
         let name_str = name.as_str().to_string();
+        let public_only = self.public_only;
+        let system = self.system;
         Box::pin(async move {
             // Direct IP addresses (v4 or v6) do not need DNS lookup
             if let Ok(ip) = name_str.parse::<std::net::IpAddr>() {
+                if public_only { crate::public_network::validate_addresses(&[ip])?; }
                 return Ok(Box::new(std::iter::once(SocketAddr::new(ip, 0))) as wreq::dns::Addrs);
             }
 
             // Localhost bypass
             if name_str.eq_ignore_ascii_case("localhost") {
+                if public_only { return Err("Provider localhost access is blocked".into()); }
                 let local_addrs = vec![
                     SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 0),
                 ];
@@ -121,9 +129,16 @@ impl Resolve for CustomDnsResolver {
             }
 
             vlog_debug!("[DoH] Resolving: {}", name_str);
+            if public_only && system {
+                let addresses: Vec<_> = tokio::net::lookup_host((name_str.as_str(), 0)).await?.collect();
+                crate::public_network::validate_addresses(&addresses.iter().map(|a| a.ip()).collect::<Vec<_>>())?;
+                return Ok(Box::new(addresses.into_iter()) as wreq::dns::Addrs);
+            }
             match resolver.lookup_ip(name_str.as_str()).await {
                 Ok(response) => {
-                    let ips = network_addresses(response.into_iter().collect()).await;
+                    let resolved: Vec<_> = response.into_iter().collect();
+                    if public_only { crate::public_network::validate_addresses(&resolved)?; }
+                    let ips = network_addresses(resolved).await;
                     let addrs: Vec<SocketAddr> = ips.into_iter().map(|ip| SocketAddr::new(ip, 0)).collect();
                     vlog_debug!("[DoH] Resolved {} to {:?}", name_str, addrs);
                     Ok(Box::new(addrs.into_iter()) as wreq::dns::Addrs)
@@ -136,6 +151,7 @@ impl Resolve for CustomDnsResolver {
                     match tokio::net::lookup_host(format!("{}:0", name_str)).await {
                         Ok(std_addrs) => {
                             let addrs: Vec<SocketAddr> = std_addrs.collect();
+                            if public_only { crate::public_network::validate_addresses(&addrs.iter().map(|a| a.ip()).collect::<Vec<_>>())?; }
                             vlog_debug!("[DoH] System DNS resolved {} to {:?}", name_str, addrs);
                             Ok(Box::new(addrs.into_iter()) as wreq::dns::Addrs)
                         }
@@ -172,7 +188,9 @@ async fn get_client(
     custom_url: Option<String>,
     cookie_store: bool,
 ) -> Result<Client, String> {
-    let active_proxy = crate::proxy_manager::get_active_proxy_url().await;
+    let public_only = !cookie_store;
+    let active_proxy = if public_only { crate::proxy_manager::get_checked_provider_proxy_url().await? }
+        else { crate::proxy_manager::get_active_proxy_url().await };
     let key = format!(
         "{}_{}_{}_{}",
         cookie_store,
@@ -204,10 +222,12 @@ async fn get_client(
         }
     }
 
-    if !provider.eq_ignore_ascii_case("system") && !provider.eq_ignore_ascii_case("none") {
-        let resolver = CustomDnsResolver::new(provider, custom_url);
+    if public_only || !provider.eq_ignore_ascii_case("system") && !provider.eq_ignore_ascii_case("none") {
+        let mut resolver = CustomDnsResolver::new(provider, custom_url);
+        resolver.public_only = public_only;
         builder = builder.dns_resolver(Arc::new(resolver));
     }
+    if public_only { builder = builder.timeout(Duration::from_secs(22)).connect_timeout(Duration::from_secs(10)); }
 
     let client = builder
         .build()
@@ -267,6 +287,7 @@ pub struct FetchResponse {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tauri::command]
 pub async fn doh_fetch(args: FetchArgs) -> Result<FetchResponse, String> {
+    if args.isolated_cookies { crate::public_network::validate_url(&args.url)?; }
     let has_cookie = args
         .headers
         .keys()
@@ -286,7 +307,14 @@ pub async fn doh_fetch(args: FetchArgs) -> Result<FetchResponse, String> {
     let method = Method::from_bytes(args.method.as_bytes()).unwrap_or(Method::GET);
     let mut request = client.request(method, &args.url);
 
-    if let Some(max_redirects) = args.max_redirects {
+    if args.isolated_cookies {
+        let limit = args.max_redirects.unwrap_or(10).min(10);
+        request = request.redirect(Policy::custom(move |attempt| {
+            if crate::public_network::validate_url(attempt.url().as_str()).is_err() { return attempt.error("Provider redirect destination is blocked"); }
+            if attempt.previous().len() >= limit { return attempt.stop(); }
+            attempt.follow()
+        }));
+    } else if let Some(max_redirects) = args.max_redirects {
         let redirect_policy = if max_redirects == 0 {
             Policy::none()
         } else {
@@ -333,7 +361,15 @@ pub async fn doh_fetch(args: FetchArgs) -> Result<FetchResponse, String> {
         }
     }
 
-    let data = response.bytes().await.map_err(|e| e.to_string())?.to_vec();
+    let data = if args.isolated_cookies {
+        let mut response = response;
+        let mut data = Vec::new();
+        while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+            if data.len() + chunk.len() > 8 * 1024 * 1024 { return Err("Provider response exceeds 8 MiB".into()); }
+            data.extend_from_slice(&chunk);
+        }
+        data
+    } else { response.bytes().await.map_err(|e| e.to_string())?.to_vec() };
 
     Ok(FetchResponse {
         status,

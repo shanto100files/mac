@@ -75,9 +75,20 @@ const WAF_EVAL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 /// dialog uses this to inject provider scripts and read their messages back.
 /// Limited to the solver window: it never runs in the main app window.
 #[tauri::command]
-pub async fn waf_eval<R: Runtime>(app: AppHandle<R>, script: String) -> Result<String, String> {
+pub async fn waf_eval<R: Runtime>(
+    app: AppHandle<R>,
+    script: String,
+    webview_label: Option<String>,
+) -> Result<String, String> {
+    let label = webview_label.as_deref().unwrap_or(WAF_WEBVIEW_LABEL);
+    let numbered_solver = label.strip_prefix("waf-solver-").is_some_and(|suffix| {
+        !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+    });
+    if label != WAF_WEBVIEW_LABEL && !numbered_solver {
+        return Err("Only verification windows can be evaluated".to_string());
+    }
     let webview = app
-        .get_webview_window(WAF_WEBVIEW_LABEL)
+        .get_webview_window(label)
         .ok_or_else(|| "WAF window is not open".to_string())?;
 
     let (tx, rx) = tokio::sync::oneshot::channel::<String>();

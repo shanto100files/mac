@@ -1,4 +1,4 @@
-import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import {platformFetch} from "../../platform/network";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
 type DetailPalette = Record<string, string>;
@@ -83,7 +83,7 @@ const decodeImage = async (source: string, objectUrl?: string) => {
 const loadBrowserImage = (url: string) => decodeImage(url);
 
 const loadTauriImage = async (url: string) => {
-  const response = await tauriFetch(url);
+  const response = await platformFetch(url);
   if (!response.ok) throw new Error(`Artwork request failed: ${response.status}`);
   const objectUrl = URL.createObjectURL(await response.blob());
   return decodeImage(objectUrl, objectUrl);

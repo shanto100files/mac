@@ -1,4 +1,5 @@
 import React from "react";
+import {isTauriRuntime} from "../platform/host";
 import useThemeStore from "../lib/zustand/themeStore";
 import { themes } from "../lib/constants";
 import {
@@ -75,6 +76,7 @@ export const SettingsPage: React.FC = () => {
   };
 
   React.useEffect(() => {
+    if (!isTauriRuntime()) {setAppVersion("Web application"); return;}
     import("@tauri-apps/api/app")
       .then((app) => app.getVersion())
       .then((v) => setAppVersion(`Version ${v}`))
@@ -223,9 +225,9 @@ export const SettingsPage: React.FC = () => {
           <div className="settings-card">
             <div className="settings-row">
               <div className="settings-info">
-                <h3 className="label-lg">Vega Desktop</h3>
+                <h3 className="label-lg">{isTauriRuntime() ? "Vega Desktop" : "Vega"}</h3>
                 <p className="body-md text-muted">{appVersion}</p>
-                <FocusableButton
+                {isTauriRuntime() && <FocusableButton
                   className="theme-toggle-btn active"
                   onClick={() => checkAppUpdates(true)}
                   style={{
@@ -235,10 +237,10 @@ export const SettingsPage: React.FC = () => {
                   }}
                 >
                   Check for Updates
-                </FocusableButton>
+                </FocusableButton>}
               </div>
             </div>
-            <div className="settings-divider" />
+            {isTauriRuntime() && <><div className="settings-divider" />
             <div className="settings-row">
               <div className="settings-info">
                 <h3 className="label-lg">Detailed Logging</h3>
@@ -283,6 +285,7 @@ export const SettingsPage: React.FC = () => {
               <FocusableButton className="theme-toggle-btn active" disabled={backupBusy} onClick={() => void handleBackup("import")}>Import</FocusableButton>
             </div>
             <div className="settings-divider" />
+            </>}
             <div className="github-star-row">
               <GitHubStarButton />
             </div>

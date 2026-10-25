@@ -29,6 +29,7 @@
         window.addEventListener(
           "keydown",
           function (e) {
+            if (!window.__TAURI_INTERNALS__) return;
             if (e.code !== "KeyI" || !e.altKey || !e.shiftKey || !(e.ctrlKey || e.metaKey)) return;
             e.preventDefault();
             e.stopImmediatePropagation();

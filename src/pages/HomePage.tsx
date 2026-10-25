@@ -132,7 +132,7 @@ export const HomePage: React.FC = () => {
       <div className="empty-state">
         <h2 className="headline-lg">Welcome to Vega</h2>
         <p className="body-lg text-muted">
-          Please install an extension to get started.
+          Add a provider source in Extensions, then install a provider to get started.
         </p>
       </div>
       </div>
@@ -252,6 +252,8 @@ export const HomePage: React.FC = () => {
             posts={category.Posts}
             filter={category.filter}
             providerValue={provider?.value}
+            windowRows
+            defer={index > 0}
           />
         ))}
       </div>

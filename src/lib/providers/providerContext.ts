@@ -6,12 +6,10 @@ import { ProviderContext } from "./types";
 import { Crypto } from "../../platform/crypto";
 import { openWebView } from "../../platform/waf";
 import { LOCAL_AUTHOR } from "./providerScope";
-import { tauriAxiosAdapter } from "./tauriAxiosAdapter";
+import { platformAxiosAdapter } from "../../platform/network";
 
-// Force all axios requests to go through the Tauri Rust backend.
-// This completely bypasses the browser's CORS restrictions and allows us to spoof
-// forbidden headers like 'Referer' and 'User-Agent'.
-axios.defaults.adapter = tauriAxiosAdapter;
+// Networking comes from the platform; provider logic does not choose a host.
+axios.defaults.adapter = platformAxiosAdapter;
 
 const KV_PREFIX = "vega_provider_kv:";
 const MAX_KV_KEY_LENGTH = 256;

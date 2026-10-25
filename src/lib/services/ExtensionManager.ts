@@ -1,5 +1,5 @@
 import axios from "axios";
-import { tauriAxiosAdapter } from "../providers/tauriAxiosAdapter";
+import { platformAxiosAdapter } from "../../platform/network";
 import {
   extensionStorage,
   ProviderExtension,
@@ -7,9 +7,11 @@ import {
   ProviderSource,
 } from "../storage/extensionStorage";
 import { mainStorage } from "../storage/StorageService";
+import {parseProviderIntegrity, verifyProviderModule, type ProviderIntegrity} from './providerIntegrity';
 import { sourceTokenStorage } from "../storage/sourceTokenStorage";
 import {
   getSourceRequestHeaders,
+  validateSourceTransport,
   throwIfRateLimited,
   throwIfSourceForbidden,
 } from "./sourceRequests";
@@ -158,9 +160,10 @@ export class ExtensionManager {
         ? `${manifestBase}${manifestBase.includes("?") ? "&" : "?"}t=${Date.now()}`
         : manifestBase;
       console.log("Fetching manifest from:", manifestUrl);
+      if (!this.testMode) validateSourceTransport(manifestUrl);
       const response = await axios.get(manifestUrl, {
         timeout: 10000,
-        adapter: tauriAxiosAdapter,
+        adapter: platformAxiosAdapter,
         headers: this.testMode
           ? undefined
           : getSourceRequestHeaders(activeSource.author, manifestUrl),
@@ -187,6 +190,7 @@ export class ExtensionManager {
           installed: false,
           hasSettings: item.hasSettings || false,
           ...(item.path ? { path: item.path } : {}),
+          ...(item.integrity === undefined ? {} : {integrity:parseProviderIntegrity(item.integrity)}),
         }));
 
       // Cache the manifest
@@ -221,6 +225,8 @@ export class ExtensionManager {
     providerValue: string,
     version: string,
     path?: string,
+    integrity?: ProviderIntegrity,
+    cacheResult = true,
   ): Promise<ProviderModule> {
     if (this.testMode) {
       return this.downloadTestProviderModule(providerValue);
@@ -230,6 +236,7 @@ export class ExtensionManager {
       const optionalFiles = ["episodes", "settings"];
       const allFiles = [...requiredFiles, ...optionalFiles];
       const filesUrl = getProviderFilesUrl(sourceUrl, providerValue, path);
+      validateSourceTransport(filesUrl);
 
       const modules: Record<string, string> = {};
       const downloadPromises = allFiles.map(async (fileName) => {
@@ -237,16 +244,19 @@ export class ExtensionManager {
           const url = `${filesUrl}/${fileName}.js?t=${Date.now()}`;
           console.log(`Downloading: ${url}`);
 
-          const response = await axios.get(url, {
+          const response = await axios.get<string>(url, {
             timeout: 15000,
-            adapter: tauriAxiosAdapter,
+            responseType:'text', transformResponse:[value => value], maxContentLength:2_000_000,
+            adapter: platformAxiosAdapter,
             headers: getSourceRequestHeaders(sourceAuthor, url),
           });
 
-          if (response.data) {
+          if (typeof response.data === 'string' && response.data) {
+            await verifyProviderModule(fileName,response.data,integrity);
             modules[fileName] = response.data;
           }
         } catch (error) {
+          if (integrity?.[fileName as keyof ProviderIntegrity]) throw error;
           if (requiredFiles.includes(fileName)) {
             throwIfSourceAccessDenied(error, sourceAuthor);
           }
@@ -292,7 +302,7 @@ export class ExtensionManager {
       };
 
       // Cache the modules
-      extensionStorage.cacheProviderModules(providerModule);
+      if (cacheResult) extensionStorage.cacheProviderModules(providerModule);
 
       return providerModule;
     } catch (error) {
@@ -318,7 +328,7 @@ export class ExtensionManager {
 
           const response = await axios.get(fileUrl, {
             timeout: 15000,
-            adapter: tauriAxiosAdapter,
+            adapter: platformAxiosAdapter,
           });
 
           if (response.data) {
@@ -390,6 +400,7 @@ export class ExtensionManager {
         provider.value,
         provider.version,
         provider.path,
+        provider.integrity,
       );
 
       // Mark as installed
@@ -416,18 +427,20 @@ export class ExtensionManager {
   /**
    * Update a provider
    */
-  async updateProvider(provider: ProviderExtension): Promise<boolean> {
-    if (!extensionStorage.isProviderInstalled(provider.value, provider.source.author)) {
+  async updateProvider(provider: ProviderExtension, shouldApply: () => boolean = () => true): Promise<boolean> {
+    if (!shouldApply() || !extensionStorage.isProviderInstalled(provider.value, provider.source.author)) {
       return false;
     }
     try {
       // Download updated modules
-      await this.downloadProviderModules(
+      const downloaded = await this.downloadProviderModules(
         provider.source.url,
         provider.source.author,
         provider.value,
         provider.version,
         provider.path,
+        provider.integrity,
+        false,
       );
 
       // Uninstall or source removal during the download takes precedence.
@@ -435,6 +448,10 @@ export class ExtensionManager {
         extensionStorage.removeProviderModules(provider.value, provider.source.author);
         return false;
       }
+
+      // Recheck immediately before committing code and version together.
+      if (!shouldApply()) return false;
+      extensionStorage.cacheProviderModules(downloaded);
 
       // Update the existing installation record.
       extensionStorage.installProvider(provider);

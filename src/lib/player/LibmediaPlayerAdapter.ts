@@ -1,4 +1,6 @@
-import {invoke} from '@tauri-apps/api/core';
+import {prepareMediaSource,releaseMediaSource} from '../../platform/mediaDelivery';
+import {platformFetch} from '../../platform/network';
+import {isTauriRuntime} from '../../platform/host';
 import {LibmediaEngine} from '@vega/libmedia-engine';
 import type {MediaTrack} from '@vega/libmedia-engine/core/media';
 import type {PlaybackState,VideoQuality} from '@vega/libmedia-engine/core/playback-state';
@@ -13,11 +15,11 @@ export class LibmediaPlayerAdapter implements PlayerEngine {
  private listeners=new Set<(state:PlayerEngineState)=>void>();
  private generation=0;
  private disposed=false;
+ private delivered?:Awaited<ReturnType<typeof prepareMediaSource>>;
  private subtitles:NonNullable<PlayerEngineOptions['subtitles']>=[];
  private subtitleIds=new Map<string,number>();
  private externalTracks:TrackInfo[]=[];
  private subtitleQueue:Promise<void>=Promise.resolve();
- private port?:number;
  private qualities:VideoQuality[]=[];
  private qualityId:number|null=null;
  private audioNeedsGesture=false;
@@ -68,34 +70,21 @@ export class LibmediaPlayerAdapter implements PlayerEngine {
   if(next.audioTracks||next.subtitleTracks||next.videoTracks)next.tracks=[...(next.videoTracks||this.state.videoTracks),...(next.audioTracks||this.state.audioTracks),...(next.subtitleTracks||this.state.subtitleTracks)];
   this.update(next);
  }
- private async mediaUrl(source:string,format?:string):Promise<string>{
-  if(!('__TAURI_INTERNALS__' in window)||/^(blob:|asset:|https?:\/\/(?:127\.0\.0\.1|localhost)(?=[:/]))/i.test(source))return source;
-  this.port??=await invoke<number>('get_stream_proxy_port');
-  if(!this.port)throw new Error('Desktop media delivery is unavailable');
-  const base=`http://127.0.0.1:${this.port}`;
-  if(source.startsWith('local://')){
-   const token=source.slice('local://'.length);
-   return `${base}/local/${encodeURIComponent(token)}/media`;
-  }
-  if(!/^https?:/i.test(source)){
-   const file=source.startsWith('file:')?decodeURIComponent(new URL(source).pathname).replace(/^\/(?=[A-Za-z]:)/,''):source;
-   return `${base}/file?path=${encodeURIComponent(file)}`;
-  }
-  const query=new URLSearchParams({url:source,headers:JSON.stringify(this.headers)});
-  const hls=/hls|m3u8|mpegurl/i.test(format||'')||/\.m3u8(?:[?#]|$)/i.test(source);
-  return `${base}/${hls?'playlist.m3u8':'source'}?${query}`;
- }
  async load(source:string,options:PlayerEngineOptions={}){
   const generation=++this.generation;this.source=source;this.headers=options.headers||{};
+  const previous=this.delivered;this.delivered=undefined;
+  await releaseMediaSource(previous);
+  if(generation!==this.generation||this.disposed)return;
   this.qualities=[];this.qualityId=null;
   this.audioNeedsGesture=false;this.paused=true;
   this.subtitleIds.clear();this.subtitles=options.subtitles||[];this.externalTracks=[];
   this.update({error:null,isBuffering:true,currentTime:0,duration:0,tracks:[],audioTracks:[],subtitleTracks:[],videoTracks:[]});
-  const url=await this.mediaUrl(source,options.streamType);
-  if(generation!==this.generation||this.disposed)return;
   const hint=options.streamType?.toLowerCase();
   const format=/hls|m3u8|mpegurl/.test(hint||'')?'hls':hint?.includes('matroska')?'mkv':hint?.includes('mp4')?'mp4':hint?.includes('webm')?'webm':hint;
-  await this.engine.load({id:String(generation),source:url,format,startPosition:options.startTime,headers:'__TAURI_INTERNALS__' in window?undefined:this.headers});
+  const delivered=await prepareMediaSource({id:String(generation),source,format,startPosition:options.startTime,headers:this.headers});
+  if(generation!==this.generation||this.disposed){await releaseMediaSource(delivered);return;}
+  this.delivered=delivered;
+  try{await this.engine.load(delivered);}catch(error){await releaseMediaSource(delivered);if(this.delivered===delivered)this.delivered=undefined;throw error;}
   if(generation!==this.generation||this.disposed)return;
   if(options.speed)this.setSpeed(options.speed);
   if(options.audioIndex!==undefined){const track=this.state.audioTracks[options.audioIndex];if(track)await this.selectTrack('aid',track.id);}
@@ -153,11 +142,13 @@ export class LibmediaPlayerAdapter implements PlayerEngine {
  }
  setSubtitleDelay(delayMs:number){this.engine.setSubtitleDelay(delayMs/1000);this.update({subtitleDelay:delayMs});}
  async addSubtitleFile(path:string,title?:string){
-  const generation=this.generation;const url=await this.mediaUrl(path);
+  const generation=this.generation;
+  const response=await this.fetchSubtitle(path);
   if(generation!==this.generation||this.disposed)return;
-  const source=/\.(srt|vtt|ass|ssa|ttml)(?:[?#]|$)/i.exec(path)?.[1];
+  const source=/\.(srt|vtt|ass|ssa|ttml)(?:[?#]|$)/i.exec(path)?.[1]||/\.(srt|vtt|ass|ssa|ttml)$/i.exec(title||'')?.[1];
   // libmedia detects external subtitle formats by URL extension.
-  const text=await fetch(url).then(response=>{if(!response.ok)throw new Error(`Subtitle request failed (${response.status})`);return response.blob();});
+  if(!response.ok)throw new Error(`Subtitle request failed (${response.status})`);
+  const text=await response.blob();
   if(generation!==this.generation||this.disposed)return;
   await this.engine.loadExternalSubtitle({source:new File([text],`subtitle.${source||'srt'}`),title});
  }
@@ -169,9 +160,9 @@ export class LibmediaPlayerAdapter implements PlayerEngine {
  private async registerSubtitle(sub:NonNullable<PlayerEngineOptions['subtitles']>[number],generation:number){
   const source=sub.url||sub.uri;if(!source)return;
   if(this.subtitleIds.has(source))return this.subtitleIds.get(source);
-  const url=await this.mediaUrl(source);
+  const response=await this.fetchSubtitle(source);
   if(generation!==this.generation||this.disposed)return;
-  const response=await fetch(url);if(!response.ok)throw new Error(`Subtitle request failed (${response.status})`);
+  if(!response.ok)throw new Error(`Subtitle request failed (${response.status})`);
   const body=await response.blob();if(generation!==this.generation||this.disposed)return;
   const extension=/\.(srt|vtt|ass|ssa|ttml)(?:[?#]|$)/i.exec(source)?.[1]||'srt';
   const id=await this.engine.loadExternalSubtitle({source:new File([body],`subtitle.${extension}`),lang:sub.language,title:sub.title});
@@ -180,5 +171,15 @@ export class LibmediaPlayerAdapter implements PlayerEngine {
   this.receive({subtitleTracks:this.engine.getSubtitleTracks()});
   return id;
  }
- destroy(){this.disposed=true;++this.generation;this.styleObserver?.disconnect();this.listeners.clear();void this.engine.destroy().finally(()=>this.container.remove());this.anchor.hidden=false;}
+ private async fetchSubtitle(source:string){
+  // Subtitles are bounded text requests, so host HTTP can deliver them directly.
+  if(!isTauriRuntime()&&/^https?:/i.test(source))return platformFetch(source,{headers:this.headers});
+  const delivered=await prepareMediaSource({id:`subtitle-${this.generation}`,source,headers:this.headers});
+  try{
+   const response=typeof delivered.source==='string'?await platformFetch(delivered.source,{headers:delivered.headers}):new Response(delivered.source);
+   // Consume the small subtitle before revoking its delivery lease.
+   const body=await response.blob();return new Response(body,{status:response.status,statusText:response.statusText,headers:response.headers});
+  }finally{await releaseMediaSource(delivered);}
+ }
+ destroy(){this.disposed=true;++this.generation;this.styleObserver?.disconnect();this.listeners.clear();const delivered=this.delivered;this.delivered=undefined;void this.engine.destroy().finally(()=>{this.container.remove();void releaseMediaSource(delivered).catch(()=>{});});this.anchor.hidden=false;}
 }

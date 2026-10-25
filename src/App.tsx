@@ -1,12 +1,15 @@
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
+import {isTauriRuntime} from "./platform/host";
 import {
   BrowserRouter,
+  HashRouter,
   Routes,
   Route,
   Navigate,
   useNavigate,
 } from "react-router-dom";
 import { QueryClientProvider } from "@tanstack/react-query";
+const AppRouter = import.meta.env.VITE_TV_HOST ? HashRouter : BrowserRouter;
 import { client } from "./lib/client";
 import { Layout } from "./components/layout/Layout";
 import { WindowControls, isWindowsPlatform } from "./components/layout/WindowControls";
@@ -14,8 +17,9 @@ import { ExtensionsPage } from "./pages/ExtensionsPage";
 import { HomePage } from "./pages/HomePage";
 import { MetaPage } from "./pages/MetaPage";
 import { SearchPage } from "./pages/SearchPage";
-import { PlayerPage } from "./pages/PlayerPage";
+import { Spinner } from "./components/ui/spinner";
 import { WafDialog } from "./components/WafDialog";
+import { VerificationConsentDialog } from "./components/VerificationConsentDialog";
 import useThemeStore from "./lib/zustand/themeStore";
 import { settingsStorage } from "./lib/storage";
 import { useAppUpdater } from "./lib/hooks/useAppUpdater";
@@ -52,6 +56,11 @@ import {
 
 let isNavInitialized = false;
 
+// The player and its media engines are only needed after playback starts.
+const PlayerPage = lazy(() => import("./pages/PlayerPage").then(module => ({
+  default: module.PlayerPage,
+})));
+
 // Opens Extensions with the add source dialog prefilled from the Android add
 // source intent. The user still confirms there, so another app or web page
 // cannot add a source silently.
@@ -84,6 +93,7 @@ export default function App() {
     // Keep an escape route even when fullscreen was entered outside the player.
     // Player/menu handlers run first and mark the keys they handled.
     const handleWindowShortcut = (event: KeyboardEvent) => {
+      if (!isTauriRuntime()) return;
       if (event.defaultPrevented || event.repeat) return;
       if (event.key !== "F11" && event.key !== "Escape") return;
       const toggle = event.key === "F11";
@@ -102,6 +112,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (!isTauriRuntime()) return;
     settingsStorage.syncStreamDoh();
     syncProxySettings();
     initializeSyncService().catch((error) =>
@@ -153,6 +164,7 @@ export default function App() {
 
   useEffect(() => {
     const handleDevtoolsShortcut = (event: KeyboardEvent) => {
+      if (!isTauriRuntime()) return;
       const isDevtoolsShortcut =
         event.key === "F12" ||
         (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === "i");
@@ -178,6 +190,7 @@ export default function App() {
     // This is an app, not a web page: hide the browser's own menu (Back,
     // Refresh, Print, Inspect) and its shortcuts. Text fields keep their
     // cut/copy/paste menu. With developer shortcuts on, everything stays.
+    if (!isTauriRuntime()) return;
     const isEditable = (target: EventTarget | null) =>
       target instanceof HTMLElement &&
       (target.isContentEditable ||
@@ -225,13 +238,18 @@ export default function App() {
     <ModalFocusProvider>
       <QueryClientProvider client={client}>
         <WafDialog />
+        <VerificationConsentDialog />
         <ToastContainer />
-        <BrowserRouter>
+        <AppRouter>
           <SourceIntentHandler />
           {isWindows && <WindowControls />}
           <Routes>
             {/* Player is outside Layout since it needs fullscreen without sidebar */}
-            <Route path="player" element={<PlayerPage />} />
+            <Route path="player" element={
+              <Suspense fallback={<div role="status" aria-label="Loading player"><Spinner /></div>}>
+                <PlayerPage />
+              </Suspense>
+            } />
             <Route path="/" element={<Layout />}>
               <Route index element={<HomePage />} />
               <Route path="content/:url" element={<MetaPage />} />
@@ -239,10 +257,10 @@ export default function App() {
               <Route path="/search" element={<SearchPage />} />
               <Route path="/watchlist" element={<LibraryPage />} />
               <Route path="/watchlist/content/:url" element={<MetaPage />} />
-              <Route path="/downloads" element={<DownloadsPage />} />
+              <Route path="/downloads" element={isTauriRuntime() ? <DownloadsPage /> : <Navigate to="/watchlist" replace />} />
               <Route
                 path="/downloads/series/:showName"
-                element={<DownloadsSeriesPage />}
+                element={isTauriRuntime() ? <DownloadsSeriesPage /> : <Navigate to="/watchlist" replace />}
               />
               <Route path="extensions" element={<ExtensionsPage />} />
               <Route path="/settings" element={<SettingsPage />} />
@@ -250,7 +268,7 @@ export default function App() {
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>
-        </BrowserRouter>
+        </AppRouter>
       </QueryClientProvider>
     </ModalFocusProvider>
   );

@@ -3,6 +3,7 @@ import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { invoke } from "@tauri-apps/api/core";
 import { buildRequestCookieHeader, storeSetCookies } from "./providerCookieJar";
 import { settingsStorage } from "../storage/SettingsStorage";
+import {publicHttpUrl} from "../../platform/publicNetworkPolicy";
 
 async function executeNativeFetch(
   url: string,
@@ -134,33 +135,38 @@ export async function providerFetch(
     }
     body = Array.from(new Uint8Array(await serializedBody.arrayBuffer()));
   }
-  const response: {
-    status: number;
-    status_text: string;
-    url: string;
-    headers: Array<[string, string]>;
-    data: number[];
-  } = await invoke("doh_fetch", {
-    args: {
-      url,
-      method: (init.method || "GET").toUpperCase(),
-      headers: plainHeaders,
-      body,
-      max_redirects: init.redirect === "manual" ? 0 : 10,
-      doh_provider: settingsStorage.getDohProvider(),
-      doh_custom_url: settingsStorage.getDohCustomUrl(),
-      isolated_cookies: true,
-    },
-  });
-
-  storeSetCookies(
-    author,
-    response.url || url,
-    response.headers
-      .filter(([key]) => key.toLowerCase() === "set-cookie")
-      .map(([, value]) => value),
-  );
-
+  type NativeResponse = {status:number; status_text:string; url:string; headers:Array<[string,string]>; data:number[]};
+  let response: NativeResponse | undefined;
+  let currentUrl = publicHttpUrl(url).href;
+  let method = (init.method || 'GET').toUpperCase();
+  for (let hop = 0; hop <= 10; hop++) {
+    init.signal?.throwIfAborted();
+    publicHttpUrl(currentUrl);
+    response = await invoke<NativeResponse>('doh_fetch', {args:{
+      url:currentUrl, method, headers:plainHeaders, body, max_redirects:0,
+      doh_provider:settingsStorage.getDohProvider(), doh_custom_url:settingsStorage.getDohCustomUrl(), isolated_cookies:true,
+    }});
+    init.signal?.throwIfAborted();
+    const setCookies = response.headers.filter(([name]) => name.toLowerCase() === 'set-cookie').map(([,value]) => value);
+    storeSetCookies(author, currentUrl, setCookies);
+    const location = response.headers.find(([name]) => name.toLowerCase() === 'location')?.[1];
+    if (![301,302,303,307,308].includes(response.status) || !location || init.redirect === 'manual') break;
+    if (init.redirect === 'error') throw new Error('Provider redirects are disabled');
+    if (hop === 10) throw new Error('Too many provider redirects');
+    const next = publicHttpUrl(new URL(location,currentUrl).href).href;
+    if (new URL(next).origin !== new URL(currentUrl).origin) for (const key of Object.keys(plainHeaders)) {
+      if (!['accept','accept-language','user-agent','referer','range'].includes(key.toLowerCase())) delete plainHeaders[key];
+    }
+    for (const key of Object.keys(plainHeaders)) if (key.toLowerCase() === 'cookie') delete plainHeaders[key];
+    const nextCookies = buildRequestCookieHeader(author,next);
+    if (nextCookies) plainHeaders.Cookie = nextCookies;
+    if (response.status === 303 && method !== 'HEAD' || [301,302].includes(response.status) && method === 'POST') {
+      method = 'GET'; body = undefined;
+      for (const key of Object.keys(plainHeaders)) if (['content-type','content-encoding'].includes(key.toLowerCase())) delete plainHeaders[key];
+    }
+    currentUrl = next;
+  }
+  if (!response) throw new Error('Provider request did not return a response');
   const headerEntries: Array<[string, string]> = [];
   for (const [key, value] of response.headers) {
     const lowerKey = key.toLowerCase();

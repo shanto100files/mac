@@ -1,4 +1,5 @@
 import useLocalContentStore from '../lib/zustand/localContentStore';
+import {isTauriRuntime} from '../platform/host';
 import {localLibraryItem} from '../lib/localContent/library';
 import {LocalContentDialog} from '../components/library/LocalContentDialog';
 import {LuFolderOpen} from 'react-icons/lu';
@@ -122,7 +123,7 @@ export const LibraryPage: React.FC = () => {
           </p>
         </div>
         <div className="page-header-actions library-header-actions">
-          <FocusableButton className="library-action-button" onClick={() => setImportOpen(true)}><LuFolderOpen size={18} /> Import folder</FocusableButton>
+          {isTauriRuntime() && <FocusableButton className="library-action-button" onClick={() => setImportOpen(true)}><LuFolderOpen size={18} /> Import folder</FocusableButton>}
           {editableCollection && (
             <FocusableButton
               focusKey="LIBRARY_EDIT_CATEGORY"

@@ -3,7 +3,8 @@ import useMetadataOverrideStore, {metadataOverrideKey} from '../lib/zustand/meta
 import {applyProviderEpisodeMetadata} from '../lib/providerEpisodeMetadata';
 import {LocalSeasonList} from '../components/content/LocalSeasonList';
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
+import { openExternalUrl as openUrl } from "../platform/externalLinks";
+import {isTauriRuntime} from "../platform/host";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FocusContext, useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
 import { resume } from "@noriginmedia/norigin-spatial-navigation-core";
@@ -485,6 +486,7 @@ export const MetaPage: React.FC = () => {
     setDialogError(null);
 
     const isQuickDownload =
+      isTauriRuntime() &&
       Boolean(
         info.quickDownload ||
           activeSeason?.quickDownload ||
@@ -539,6 +541,7 @@ export const MetaPage: React.FC = () => {
   };
 
   const executeDownloadVideo = async (targetContext: DialogContext, stream: Stream) => {
+    if(!isTauriRuntime()) {await openUrl(stream.link);return;}
     const resolvedSkip =
       stream.skip && stream.skip.length > 0
         ? stream.skip
@@ -572,6 +575,7 @@ export const MetaPage: React.FC = () => {
   const executeQuickDownload = async (targetContext: DialogContext, stream: Stream, signal?: AbortSignal) => {
     if (signal?.aborted) return;
     await executeDownloadVideo(targetContext, stream);
+    if(!isTauriRuntime())return;
 
     if (!signal?.aborted && stream.subtitles && stream.subtitles.length > 0) {
       const sub = stream.subtitles[0];
@@ -610,6 +614,11 @@ export const MetaPage: React.FC = () => {
 
   const selectSubtitle = async (sub: { uri: string; title: string; language?: string; type?: string }) => {
     if (!dialogContext) return;
+    if(!isTauriRuntime()){
+      await openUrl(sub.uri);
+      setIsDownloadDialogOpen(false);setDialogStreams([]);setDialogContext(null);setDialogError(null);
+      return;
+    }
     const subId = `${dialogContext.id}_subtitle_${sub.title}`;
     await addDownload({
       id: subId,
@@ -855,7 +864,7 @@ export const MetaPage: React.FC = () => {
                 <FocusableButton disabled={Boolean(batchProgress)} onClick={() => setSelectedEpisodes(new Set(displayedRows.map(({ episode }) => episode.link)))}>Select all</FocusableButton>
                 <FocusableButton disabled={Boolean(batchProgress)} onClick={() => setSelectedEpisodes(new Set())}>Clear</FocusableButton>
                 <FocusableButton disabled={Boolean(batchProgress) || !selectedEpisodes.size} onClick={() => void runSelectedEpisodes("copy")}>Copy links</FocusableButton>
-                <FocusableButton disabled={Boolean(batchProgress) || !selectedEpisodes.size} onClick={() => void runSelectedEpisodes("download")}>Download</FocusableButton>
+                {isTauriRuntime() && <FocusableButton disabled={Boolean(batchProgress) || !selectedEpisodes.size} onClick={() => void runSelectedEpisodes("download")}>Download</FocusableButton>}
                 {batchProgress ? <FocusableButton onClick={() => batchController.current?.abort()}>Cancel</FocusableButton> :
                   <FocusableButton onClick={() => { setSelectingEpisodes(false); setSelectedEpisodes(new Set()); setBatchResult(""); }}>Exit selection</FocusableButton>}
                 <span role="status">{batchProgress || batchResult}</span>
@@ -920,6 +929,7 @@ export const MetaPage: React.FC = () => {
                       progressPercent={progressPercent}
                       watched={progressPercent > 85}
                       download={storedDownload}
+                      hideDownload={false}
                       hasDownloadedSubtitles={hasDownloadedSubtitles}
                       extracting={extractingId === id}
                       selecting={selectingEpisodes}

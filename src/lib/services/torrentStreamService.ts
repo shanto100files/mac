@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../../platform/host";
 
 export function isTorrentUrl(url?: string | null): boolean {
   if (!url) return false;
@@ -53,6 +54,7 @@ export async function resolveTorrentStream(
   if (!isTorrentUrl(torrentUrl)) {
     return { streamUrl: torrentUrl, infoHash: "" };
   }
+  if (!isTauriRuntime()) throw new Error("Torrent playback requires the desktop app.");
 
   const timeoutMs = options?.timeoutMs || 45_000;
   const signal = options?.signal;

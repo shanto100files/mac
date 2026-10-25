@@ -1,0 +1,14 @@
+{
+  "id": "in.vegaapp.tv",
+  "version": "2.3.0",
+  "vendor": "Vega",
+  "type": "web",
+  "main": "index.html",
+  "title": "Vega",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "resolution": "1920x1080",
+  "disableBackHistoryAPI": true,
+  "requiredMemory": 256,
+  "requiredACG": ["activity.operation"]
+}

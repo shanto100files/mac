@@ -1,4 +1,5 @@
 import React from "react";
+import {isTauriRuntime} from "../../platform/host";
 import { LuMenu as Menu } from "react-icons/lu";
 import { useLocation } from "react-router-dom";
 import { FocusableNavLink } from "./FocusableNavLink";
@@ -130,7 +131,7 @@ export const Sidebar: React.FC = () => {
 
         <nav className="sidebar-nav" aria-label="Main navigation">
           <div className="nav-group">
-            {primaryDestinations.map((destination) => (
+            {primaryDestinations.filter(destination => destination.to !== "/downloads" || isTauriRuntime()).map((destination) => (
               <NavigationDestination
                 key={destination.to}
                 {...destination}

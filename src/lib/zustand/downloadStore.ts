@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import {isTauriRuntime} from "../../platform/host";
 import { persist } from "zustand/middleware";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
@@ -568,6 +569,7 @@ export const useDownloadStore = create<DownloadState>()(
 
 let initialized = false;
 export function initDownloadListeners() {
+  if (!isTauriRuntime()) return;
   if (initialized) return;
   initialized = true;
 

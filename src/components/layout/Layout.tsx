@@ -30,9 +30,10 @@ export const Layout: React.FC = () => {
 
   useEffect(() => {
     if (tvMode && isHomePage) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         focusSelf();
       }, 50);
+      return () => clearTimeout(timer);
     }
   }, [tvMode, focusSelf, isHomePage]);
 

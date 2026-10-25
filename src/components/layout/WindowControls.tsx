@@ -8,11 +8,13 @@ import {
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { invoke } from "@tauri-apps/api/core";
 import "./WindowControls.css";
+import {isTauriRuntime} from "../../platform/host";
 
-const appWindow = getCurrentWindow();
+// Do not resolve a native window while importing the shared browser app.
+const nativeWindow = () => getCurrentWindow();
 
 export const isWindowsPlatform = (): boolean => {
-  if (typeof navigator === "undefined") return false;
+  if (!isTauriRuntime() || typeof navigator === "undefined") return false;
   const ua = navigator.userAgent.toLowerCase();
   if (ua.includes("windows") || ua.includes("win32") || ua.includes("win64")) return true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +24,7 @@ export const isWindowsPlatform = (): boolean => {
 
 /** Maximize or restore, keeping the window inside the work area. */
 export const toggleWindowMaximize = async (): Promise<boolean> => {
+  const appWindow = nativeWindow();
   await appWindow.toggleMaximize();
   const isMaximized = await appWindow.isMaximized();
   await invoke("ensure_window_in_work_area", { maximized: isMaximized });
@@ -30,6 +33,7 @@ export const toggleWindowMaximize = async (): Promise<boolean> => {
 
 export const WindowControls: React.FC = () => {
   if (!isWindowsPlatform()) return null;
+  const appWindow = nativeWindow();
 
   const [maximized, setMaximized] = React.useState(false);
   const [fullscreen, setFullscreen] = React.useState(false);

@@ -5,6 +5,7 @@ mod byedpi_relay;
 mod nat64;
 mod cookie_manager;
 mod doh_client;
+mod public_network;
 mod download_manager;
 mod ffmpeg_resolver;
 mod local_content;
@@ -659,6 +660,14 @@ fn configure_bundled_dll_search_path() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Custom player overlays can temporarily occlude video. WebKit's MSE
+    // suspension path can leave GStreamer unable to push subsequent buffers.
+    // Keep the media pipeline running under our controls; retain GPU decoding.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("WEBKIT_GST_ALLOW_PLAYBACK_OF_INVISIBLE_VIDEOS").is_none() {
+        std::env::set_var("WEBKIT_GST_ALLOW_PLAYBACK_OF_INVISIBLE_VIDEOS", "1");
+    }
+
     #[cfg(target_os = "windows")]
     configure_bundled_dll_search_path();
 

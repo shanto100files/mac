@@ -1,4 +1,5 @@
 import { cacheStorage, mainStorage, watchHistoryStorage, watchListStorage } from "../storage";
+import {isTauriRuntime} from "../../platform/host";
 import type { WatchHistoryItem } from "../storage/WatchHistoryStorage";
 import { WatchHistoryKeys } from "../storage/WatchHistoryStorage";
 import {
@@ -173,6 +174,7 @@ const buildManifest = async (): Promise<VegaSyncManifest> => {
 };
 
 export const publishSyncManifest = async (): Promise<void> => {
+  if (!isTauriRuntime()) return;
   const baseDir = await getDesktopSyncRoot();
   await writeDesktopSyncManifest(baseDir, await buildManifest());
 };
@@ -385,6 +387,7 @@ const runSharedFolderSync = async (): Promise<void> => {
 };
 
 export const syncFromSharedFolder = (): Promise<void> => {
+  if (!isTauriRuntime()) return Promise.resolve();
   if (!syncRequest) {
     syncRequest = runSharedFolderSync().finally(() => {
       syncRequest = undefined;
@@ -394,6 +397,7 @@ export const syncFromSharedFolder = (): Promise<void> => {
 };
 
 export const initializeSyncService = async (): Promise<void> => {
+  if (!isTauriRuntime()) return;
   if (!initialized) {
     initialized = true;
     previousDownloads = useDownloadStore.getState().downloads;

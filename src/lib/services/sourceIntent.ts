@@ -1,4 +1,5 @@
 import {getCurrent, onOpenUrl} from '@tauri-apps/plugin-deep-link';
+import {isTauriRuntime} from '../../platform/host';
 
 // Two ways in, same payload:
 // - Android: intent vega.intent.action.ADD_SOURCE with a "url" extra and an
@@ -75,6 +76,7 @@ let launchLinkChecked = false;
 export const subscribeSourceIntent = (
   listener: (payload: SourceIntentPayload) => void,
 ): (() => void) => {
+  if (!isTauriRuntime()) return () => {};
   if (isAndroid()) {
     const handleIntent = () => {
       const payload = takeSourceIntent();

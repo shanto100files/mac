@@ -6,6 +6,7 @@ import tailwindcss from "@tailwindcss/vite";
 import process from "node:process";
 // @ts-expect-error type error without @types/node package
 import { readFileSync } from "node:fs";
+import {createHash} from 'node:crypto';
 const host = process.env.TAURI_DEV_HOST;
 
 const getSharedMobileTmdbKey = () => {
@@ -20,6 +21,8 @@ const getSharedMobileTmdbKey = () => {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
+  const tvHost = mode === 'webos' ? 'webos' : mode === 'amazon-vega' ? 'amazon-vega' : '';
+  const webBuild = mode === "web" || !!tvHost;
   const desktopEnv = loadEnv(mode, process.cwd(), "");
   const tmdbApiKey =
     desktopEnv.TMDB_API_KEY ||
@@ -35,9 +38,23 @@ export default defineConfig(({ mode }) => {
     "";
 
   return {
-    plugins: [react(), tailwindcss(), libmediaChunkPlugin()],
-    optimizeDeps: {exclude:["@libmedia/avplayer"]},
+    base: tvHost ? './' : '/',
+    plugins: [react(), tailwindcss(), libmediaChunkPlugin(), {
+      name:'production-script-policy', apply:'build',
+      transformIndexHtml: {order:'post', handler(html) {
+        const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+          .filter(match => !/\bsrc\s*=/.test(match[1])).map(match => `'sha256-${createHash('sha256').update(match[2]).digest('base64')}'`);
+        const policy = ["default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`,
+          "style-src 'self' 'unsafe-inline'", "connect-src 'self' https: http: blob: data: ipc: asset: tauri:",
+          "img-src 'self' https: http: data: blob: asset:", "media-src 'self' https: http: blob: data: asset:",
+          "font-src 'self' data:", "worker-src 'self' blob:", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"].join('; ');
+        return [{tag:'meta', attrs:{'http-equiv':'Content-Security-Policy', content:policy}, injectTo:'head-prepend'}];
+      }},
+    }],
+    optimizeDeps: {exclude:["@libmedia/avplayer"], include:['quickjs-emscripten', '@jitl/quickjs-singlefile-browser-release-sync', '@jitl/quickjs-wasmfile-release-sync', 'ipaddr.js']},
     define: {
+      'import.meta.env.VITE_TV_HOST': JSON.stringify(tvHost),
+      ...(tvHost ? {'import.meta.env.VITE_TV_MODE': JSON.stringify('true')} : {}),
       "import.meta.env.VITE_TMDB_API_KEY": JSON.stringify(tmdbApiKey),
       "import.meta.env.VITE_PROXY_API_URL": JSON.stringify(proxyApiUrl),
     },
@@ -48,7 +65,7 @@ export default defineConfig(({ mode }) => {
     clearScreen: false,
     // 2. tauri expects a fixed port, fail if that port is not available
     server: {
-      port: 1420,
+      port: webBuild ? 5173 : 1420,
       strictPort: true,
       host: host || false,
       hmr: host
@@ -64,8 +81,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
+      outDir: tvHost ? `dist-tv/${tvHost}/ui` : webBuild ? "dist-web" : "dist",
       target:
-        process.env.TAURI_ENV_PLATFORM === "windows"
+        webBuild ? "es2022" : process.env.TAURI_ENV_PLATFORM === "windows"
           ? "chrome105"
           : "safari13",
       sourcemap: !!process.env.TAURI_ENV_DEBUG,

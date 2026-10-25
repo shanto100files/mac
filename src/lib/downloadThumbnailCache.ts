@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import {isTauriRuntime} from "../platform/host";
 
 const DOWNLOAD_THUMBNAIL_TIMESTAMP_SECONDS = 30;
 
@@ -25,6 +26,7 @@ const extractThumbnail = async (filePath: string) => {
  * native command also persists each result in the app cache.
  */
 export const getDownloadedVideoThumbnail = (filePath: string) => {
+  if (!isTauriRuntime()) return Promise.resolve(null);
   const source = filePath.trim();
   if (!source) return Promise.resolve(null);
 
