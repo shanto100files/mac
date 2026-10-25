@@ -71,8 +71,9 @@ if (target === 'webos') {
     if (!toml.includes('[network-traffic-policy.cleartext]')) toml+='\n[network-traffic-policy.cleartext]\nallowed-domains = ["127.0.0.1"]\n';
     await writeFile(manifest,toml);
     run('vega',['project','update-manifest','--os-min','1.2','--os-version','1.2'],app);
-    run('npm',['install','--save',module],app);
-    run('npm',['run','build:app'],app,{VEGA_TV_NATIVE_SOURCE:path.join(root,'tv/native-host')});
+    run('npm',['install','--include=dev','--save',module],app);
+    const version=JSON.parse(await readFile(path.join(root,'package.json'),'utf8')).version;
+    run('npx',['--no-install','react-native','build-vega','--build-type','Release','--build-version',version],app,{VEGA_TV_NATIVE_SOURCE:path.join(root,'tv/native-host')});
   } else {
     await mkdir(path.join(out,'wrapper'),{recursive:true});
     await cp(path.join(root,'tv/amazon-vega'),path.join(out,'wrapper'),{recursive:true});

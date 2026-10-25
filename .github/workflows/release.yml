@@ -224,6 +224,18 @@ jobs:
       - name: Build Amazon Vega OS package
         run: npm run package:amazon-vega
 
+      - name: Upload Amazon build diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: amazon-build-diagnostics
+          path: |
+            dist-tv/amazon-vega/app/package.json
+            dist-tv/amazon-vega/app/manifest.toml
+            dist-tv/amazon-vega/VegaTransport/package.json
+            dist-tv/amazon-vega/VegaTransport/kepler/turbo-modules/**
+          if-no-files-found: ignore
+
       - name: Upload VPKG to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
