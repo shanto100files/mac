@@ -5,7 +5,7 @@ on:
       amazon_vega:
         description: Build Amazon Vega on the SDK runner
         type: boolean
-        default: false
+        default: true
   push:
     tags: ['tv-v*']
 permissions:

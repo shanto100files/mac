@@ -160,6 +160,120 @@ jobs:
           gh release upload "app-v$version" "store-bundle/Vega_${version}_x64_arm64.msixbundle" --clobber
           if ($LASTEXITCODE -ne 0) { throw 'Failed to upload the Windows Store bundle.' }
 
+  release-lg-webos:
+    name: LG webOS
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    env:
+      VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY || secrets.TMDB_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Install webOS packaging tools
+        run: npm install --global @webos-tools/cli@3.2.6
+
+      - name: Build LG webOS package
+        run: npm run package:webos
+
+      - name: Upload IPK to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="app-v${VERSION}"
+          shopt -s nullglob
+          packages=(dist-tv/webos/*.ipk)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "No LG webOS packages found"
+            exit 1
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Another platform may create the shared release concurrently.
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "Vega v${VERSION}" --notes "Automated release of Vega." --draft \
+              || gh release view "$TAG" >/dev/null
+          fi
+          for attempt in {1..6}; do
+            if gh release upload "$TAG" "${packages[@]}" --clobber; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+          done
+          echo "Failed to upload LG webOS packages"
+          exit 1
+
+  release-amazon-vega:
+    name: Amazon Vega OS
+    permissions:
+      contents: write
+    # Requires the installed Amazon SDK and authenticated Amazon npm registry.
+    runs-on: [self-hosted, linux, vega-sdk]
+    env:
+      VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY || secrets.TMDB_API_KEY }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: armv7-unknown-linux-gnueabihf,aarch64-unknown-linux-gnu,x86_64-unknown-linux-gnu
+
+      - name: Verify Amazon SDK is available
+        run: command -v vega
+
+      - name: Install frontend dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build Amazon Vega OS package
+        run: npm run package:amazon-vega
+
+      - name: Upload VPKG to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="app-v${VERSION}"
+          shopt -s nullglob globstar
+          packages=(dist-tv/amazon-vega/app/build/**/*.vpkg)
+          if [ ${#packages[@]} -eq 0 ]; then
+            echo "No Amazon Vega OS packages found"
+            exit 1
+          fi
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            # Another platform may create the shared release concurrently.
+            gh release create "$TAG" --target "$GITHUB_SHA" \
+              --title "Vega v${VERSION}" --notes "Automated release of Vega." --draft \
+              || gh release view "$TAG" >/dev/null
+          fi
+          for attempt in {1..6}; do
+            if gh release upload "$TAG" "${packages[@]}" --clobber; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 6 ]; then sleep 5; fi
+          done
+          echo "Failed to upload Amazon Vega OS packages"
+          exit 1
+
   release-android:
     permissions:
       contents: write
