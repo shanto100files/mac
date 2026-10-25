@@ -26,6 +26,14 @@ jobs:
       - run: cargo test --locked --manifest-path tv/native-host/Cargo.toml
       - run: npx playwright install --with-deps chromium
       - run: npm run test:tv:browser
+      - name: Upload TV browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tv-browser-failures
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
   lg-webos:
     needs: transport-checks
     runs-on: ubuntu-22.04

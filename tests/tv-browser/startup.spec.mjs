@@ -15,6 +15,9 @@ for(const target of ['webos','amazon-vega']) {
     }
     const errors=[];page.on('pageerror',error=>errors.push(error.message));
     try {
+      // Exercise delayed React commits, as on slower TV hardware/CI runners.
+      const cdp=await page.context().newCDPSession(page);
+      await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});
       await page.goto(url);
       await expect(page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Extensions',exact:true})).toBeVisible();
       await expect.poll(()=>page.evaluate(()=>window.vegaPlatformHost?.kind)).toBe(target);
@@ -24,20 +27,28 @@ for(const target of ['webos','amazon-vega']) {
       expect(result.chromeExtension).toBe(false);expect(result.host.publicDestinationChecks).toBe(true);
       await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Extensions',exact:true}).click();
       await expect(page).toHaveURL(/#\/extensions/);
-      const dialog=page.getByRole('dialog');
-      if(await dialog.isVisible()) await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      // The route commits before its effect opens the empty-source dialog.
+      // An immediate isVisible() can skip it and leave the page aria-hidden.
+      const dialog=page.getByRole('dialog',{name:'Add source',exact:true});
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      await expect(dialog).toBeHidden();
       await expect(page.getByRole('heading',{name:'No providers available'})).toBeVisible();
       await expect(page.getByText('Add a source to begin',{exact:true})).toBeVisible();
       const blocked=await page.evaluate(async()=>{try {await window.vegaPlatformHost.request({url:'http://127.0.0.1/',method:'GET',headers:[],redirect:'follow',credentials:'omit'},new AbortController().signal);return '';}catch(error){return error.message;}});
       expect(blocked).toMatch(/blocked/i);
       await page.getByRole('navigation',{name:'Main navigation'}).getByRole('button',{name:'Settings',exact:true}).click();
       await expect(page).toHaveURL(/#\/settings/);
+      await expect(page.getByRole('heading',{name:'Settings',exact:true})).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(page).toHaveURL(/#\/extensions/);
-      if(await page.getByRole('dialog').isVisible()) await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      await expect(dialog).toBeHidden();
       await page.reload();
-      await expect(page.getByRole('dialog')).toBeVisible();
-      await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole('button',{name:'Close',exact:true}).click();
+      await expect(dialog).toBeHidden();
       await expect(page.getByRole('heading',{name:'No providers available'})).toBeVisible();
       expect(errors).toEqual([]);
     } finally {if(host)host.close();if(child)child.kill();}
