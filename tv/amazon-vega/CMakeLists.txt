@@ -31,7 +31,7 @@ add_custom_command(OUTPUT ${RUST_LIB}
     "AR_${RUST_TARGET}=${CMAKE_AR}"
     "CFLAGS=${RUST_CFLAGS}"
     "RUSTFLAGS=${RUST_FLAGS}"
-    ${CARGO} build --locked --release --target ${RUST_TARGET}
+    ${CARGO} build --lib --locked --release --target ${RUST_TARGET}
       --manifest-path ${NATIVE_SOURCE}/Cargo.toml --target-dir ${CMAKE_CURRENT_BINARY_DIR}/rust
   DEPENDS ${RUST_SOURCES} ${NATIVE_SOURCE}/Cargo.toml ${NATIVE_SOURCE}/Cargo.lock
     ${NATIVE_SOURCE}/../../src-tauri/src/public_network.rs
