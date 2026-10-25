@@ -48,7 +48,7 @@ if (target === 'webos') {
     run('npm',['install','--include=dev'],module);
     // The SDK template already contains a sample implementation. Regenerate it
     // from our interface on every build, then reapply our native host methods.
-    run('npx',['keplerscript-turbomodule-api','codegen','src/turbo-modules/NativeVegaTransport.ts','-o','kepler/turbo-modules/','--new','--namespace','VegaTransportModule'],module);
+    run('npx',['keplerscript-turbomodule-api','codegen','src/turbo-modules/NativeVegaTransport.ts','-o','kepler/turbo-modules/','--new','--namespace','VegaTransportTurboModule'],module);
     const cppPath=path.join(module,'kepler/turbo-modules/VegaTransport.cpp');
     let cpp=await readFile(cppPath,'utf8');
     const start=/((?:std::)?string\s+VegaTransport::start\([^)]*\)\s*)\{[^}]*\}/;
@@ -59,7 +59,7 @@ if (target === 'webos') {
     if (!cpp.includes('extern "C" const char* vega_tv_start')) cpp='#include <stdexcept>\n#include <string>\nextern "C" const char* vega_tv_start();\nextern "C" void vega_tv_stop();\n'+cpp;
     await writeFile(cppPath,cpp);
     await cp(path.join(root,'tv/amazon-vega/CMakeLists.txt'),path.join(module,'CMakeLists.txt'));
-    await cp(path.join(root,'tv/amazon-vega/AutoLinkInit.cpp'),path.join(module,'kepler/AutoLinkInit.cpp'));
+    // Retain the SDK template's registration header, entry point and macros.
     await writeFile(path.join(module,'react-native.config.js'),`module.exports={dependency:{platforms:{kepler:{autolink:{'in.vegaapp.tv.transport':{libraryName:'libVegaTransport.so',provider:'application',linkDynamic:true,turbomodules:['VegaTransport']}}}}}};\n`);
     // Build the native libraries through the SDK template's prepack lifecycle.
     // Installing the source folder alone leaves autolinking without a .so.
