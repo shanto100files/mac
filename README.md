@@ -21,6 +21,8 @@ ___
 	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
 </a>
 
+[![Download Apk](https://custom-icon-badges.demolab.com/badge/-Website-tomato?style=for-the-badge&logo=download&logoColor=white)](https://vega-app.in/#desktop)
+
 [![Download Installers](https://custom-icon-badges.demolab.com/badge/-Download_From_Github-black?style=for-the-badge&logo=download&logoColor=white)](https://github.com/vega-org/vega-desktop/releases/latest)
 
 ## Vega for Mobile
