@@ -189,37 +189,14 @@ jobs:
       - name: Upload IPK to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="app-v${VERSION}"
-          shopt -s nullglob
-          packages=(dist-tv/webos/*.ipk)
-          if [ ${#packages[@]} -eq 0 ]; then
-            echo "No LG webOS packages found"
-            exit 1
-          fi
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            # Another platform may create the shared release concurrently.
-            gh release create "$TAG" --target "$GITHUB_SHA" \
-              --title "Vega v${VERSION}" --notes "Automated release of Vega." --draft \
-              || gh release view "$TAG" >/dev/null
-          fi
-          for attempt in {1..6}; do
-            if gh release upload "$TAG" "${packages[@]}" --clobber; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 6 ]; then sleep 5; fi
-          done
-          echo "Failed to upload LG webOS packages"
-          exit 1
+        run: bash scripts/upload-tv-release.sh webos
 
   release-amazon-vega:
     name: Amazon Vega OS
     permissions:
       contents: write
-    # Requires the installed Amazon SDK and authenticated Amazon npm registry.
-    runs-on: [self-hosted, linux, vega-sdk]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     env:
       VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY || secrets.TMDB_API_KEY }}
     steps:
@@ -237,8 +214,9 @@ jobs:
         with:
           targets: armv7-unknown-linux-gnueabihf,aarch64-unknown-linux-gnu,x86_64-unknown-linux-gnu
 
-      - name: Verify Amazon SDK is available
-        run: command -v vega
+      - name: Set up Amazon Vega SDK
+        uses: ./.github/actions/setup-amazon-vega
+        timeout-minutes: 25
 
       - name: Install frontend dependencies
         run: npm ci --ignore-scripts
@@ -249,30 +227,7 @@ jobs:
       - name: Upload VPKG to Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          VERSION=$(node -p "require('./package.json').version")
-          TAG="app-v${VERSION}"
-          shopt -s nullglob globstar
-          packages=(dist-tv/amazon-vega/app/build/**/*.vpkg)
-          if [ ${#packages[@]} -eq 0 ]; then
-            echo "No Amazon Vega OS packages found"
-            exit 1
-          fi
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            # Another platform may create the shared release concurrently.
-            gh release create "$TAG" --target "$GITHUB_SHA" \
-              --title "Vega v${VERSION}" --notes "Automated release of Vega." --draft \
-              || gh release view "$TAG" >/dev/null
-          fi
-          for attempt in {1..6}; do
-            if gh release upload "$TAG" "${packages[@]}" --clobber; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 6 ]; then sleep 5; fi
-          done
-          echo "Failed to upload Amazon Vega OS packages"
-          exit 1
+        run: bash scripts/upload-tv-release.sh amazon-vega
 
   release-android:
     permissions:
@@ -286,7 +241,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Java
-        uses: actions/setup-java@v3
+        uses: actions/setup-java@v5
         with:
           distribution: "zulu"
           java-version: "17"

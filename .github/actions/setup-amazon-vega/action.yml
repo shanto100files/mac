@@ -1,0 +1,32 @@
+name: Set up Amazon Vega SDK
+description: Install the Vega SDK non-interactively on a GitHub-hosted Ubuntu runner
+inputs:
+  sdk-version:
+    description: Amazon Vega SDK version
+    default: "0.24.9311"
+runs:
+  using: composite
+  steps:
+    - name: Install SDK build dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends curl ca-certificates tar jq lz4 unzip xz-utils build-essential cmake ninja-build pkg-config python3-dev
+    - name: Install Amazon Vega SDK
+      shell: bash
+      env:
+        NONINTERACTIVE: "true"
+        SKIP_VVD_INSTALL: "true"
+        VEGA_SDK_VERSION: ${{ inputs.sdk-version }}
+      run: |
+        curl --fail --show-error --location --retry 3 \
+          https://sdk-installer.vega.labcollab.net/get_vvm.sh \
+          --output "$RUNNER_TEMP/install-vega-sdk.sh"
+        bash "$RUNNER_TEMP/install-vega-sdk.sh"
+        source "$HOME/vega/env"
+        vega --version
+        echo "$HOME/vega/bin" >> "$GITHUB_PATH"
+        if [ -n "${KEPLER_SDK_PATH:-}" ]; then
+          echo "KEPLER_SDK_PATH=$KEPLER_SDK_PATH" >> "$GITHUB_ENV"
+          echo "$KEPLER_SDK_PATH/bin" >> "$GITHUB_PATH"
+        fi

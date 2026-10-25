@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       amazon_vega:
-        description: Build Amazon Vega on the SDK runner
+        description: Build Amazon Vega OS
         type: boolean
         default: true
   push:
@@ -22,6 +22,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - run: npm ci --ignore-scripts
       - run: npm run test:tv
+      - run: node --test tests/tv-release.test.mjs
       - run: npm run test:platform
       - run: cargo test --locked --manifest-path tv/native-host/Cargo.toml
       - run: npx playwright install --with-deps chromium
@@ -35,6 +36,8 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   lg-webos:
+    permissions:
+      contents: write
     needs: transport-checks
     runs-on: ubuntu-22.04
     env:
@@ -53,11 +56,17 @@ jobs:
           name: vega-lg-webos
           path: dist-tv/webos/*.ipk
           if-no-files-found: error
+      - name: Upload IPK to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/upload-tv-release.sh webos
   amazon-vega:
     if: inputs.amazon_vega == true || startsWith(github.ref, 'refs/tags/tv-v')
     needs: transport-checks
-    # Provision the Amazon SDK and authenticated Amazon npm registry on this runner.
-    runs-on: [self-hosted, linux, vega-sdk]
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
     env:
       VITE_TMDB_API_KEY: ${{ secrets.VITE_TMDB_API_KEY || secrets.TMDB_API_KEY }}
     steps:
@@ -69,6 +78,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: armv7-unknown-linux-gnueabihf,aarch64-unknown-linux-gnu,x86_64-unknown-linux-gnu
+      - uses: ./.github/actions/setup-amazon-vega
+        timeout-minutes: 25
       - run: npm ci --ignore-scripts
       - run: npm run package:amazon-vega
       - uses: actions/upload-artifact@v4
@@ -76,3 +87,7 @@ jobs:
           name: vega-amazon-vega
           path: dist-tv/amazon-vega/app/build/**/*.vpkg
           if-no-files-found: error
+      - name: Upload VPKG to Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/upload-tv-release.sh amazon-vega
