@@ -27,6 +27,12 @@ test("small windows do not allocate an upscaled bitmap", () => {
  const {canvas} = fixture(); paintHomeBackdrop(canvas, {naturalWidth: 100, naturalHeight: 200}, 200, 100);
  assert.deepEqual([canvas.width, canvas.height], [200, 100]);
 });
+test("predecoded bitmaps retain the centered cover crop", () => {
+ const {canvas, draws} = fixture(); const bitmap = {width: 160, height: 240};
+ assert.equal(paintHomeBackdrop(canvas, bitmap, 1000, 500), true);
+ assert.deepEqual([canvas.width, canvas.height], [320, 160]);
+ assert.deepEqual(draws[0], [bitmap, 0, -160, 320, 480]);
+});
 test("unloaded images, missing contexts and zero-sized layouts do not draw", () => {
  const {canvas, draws} = fixture();
  assert.equal(paintHomeBackdrop(canvas, {naturalWidth: 0, naturalHeight: 0}, 1000, 500), false);

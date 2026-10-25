@@ -4,6 +4,7 @@ import { useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
 import { setFocus } from "@noriginmedia/norigin-spatial-navigation-core";
 import { settingsStorage } from "../../lib/storage";
 import { cn } from "../../lib/utils";
+import { cardArtwork } from "../../lib/cardArtwork";
 import {
   prefetchArtworkPalette,
   useArtworkPalette,
@@ -210,7 +211,7 @@ export const PostCardItem = memo(function PostCardItem({
         )}
         {post.image && !imageFailed && (
           <img
-            src={post.image}
+            {...cardArtwork(post.image, activeAspectRatio)}
             alt=""
             className="post-image"
             loading="lazy"

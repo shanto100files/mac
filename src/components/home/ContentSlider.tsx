@@ -51,11 +51,9 @@ export const ContentSlider = memo(function ContentSlider({
   defer = false,
 }: ContentSliderProps) {
   const rowRef = useRef<HTMLDivElement>(null);
-  const [rowHeight, setRowHeight] = useState<number>();
-  const rowScrollRef = useRef(0);
-  const [nearViewport, setNearViewport] = useState(!defer);
+  const [revealed, setRevealed] = useState(!defer);
   const [tvMode, setTvMode] = useState(() => settingsStorage.isTvModeEnabled() || /android/i.test(navigator.userAgent));
-  const renderPosts = !windowRows || tvMode || typeof IntersectionObserver === "undefined" || nearViewport;
+  const renderPosts = !windowRows || tvMode || typeof IntersectionObserver === "undefined" || revealed;
   const navigate = useNavigate();
   const sanitizedTitle = title.replace(/[^a-zA-Z0-9_-]/g, "_");
 
@@ -70,14 +68,11 @@ export const ContentSlider = memo(function ContentSlider({
   useEffect(() => {
     if (!windowRows) return;
     const update = () => setTvMode(settingsStorage.isTvModeEnabled() || /android/i.test(navigator.userAgent));
-    const resize = () => setRowHeight(undefined);
     window.addEventListener("vega_tv_mode_changed", update);
     window.addEventListener("storage", update);
-    window.addEventListener("resize", resize);
     return () => {
       window.removeEventListener("vega_tv_mode_changed", update);
       window.removeEventListener("storage", update);
-      window.removeEventListener("resize", resize);
     };
   }, [windowRows]);
 
@@ -85,11 +80,13 @@ export const ContentSlider = memo(function ContentSlider({
     const host = focusRef.current;
     if (!windowRows || tvMode || isLoading || !host || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(([entry]) => {
-      if (!entry.isIntersecting && rowRef.current) {
-        setRowHeight(rowRef.current.getBoundingClientRect().height);
-        rowScrollRef.current = rowRef.current.scrollLeft;
+      // Defer the first mount, then retain the row. Destroying it whenever it
+      // leaves the viewport repeats focus registration, layout and image
+      // decoding each time the user scrolls back over the same posters.
+      if (entry.isIntersecting) {
+        setRevealed(true);
+        observer.disconnect();
       }
-      setNearViewport(entry.isIntersecting);
     }, {root: host.closest(".layout-content"), rootMargin: "400px 0px"});
     observer.observe(host);
     return () => observer.disconnect();
@@ -98,7 +95,6 @@ export const ContentSlider = memo(function ContentSlider({
   useEffect(() => {
     const row = rowRef.current;
     if (!row) return;
-    row.scrollLeft = rowScrollRef.current;
     return installHorizontalDrag(row);
   }, [isLoading, posts.length, renderPosts]);
 
@@ -212,7 +208,7 @@ export const ContentSlider = memo(function ContentSlider({
             <ChevronRight size={32} />
           </button>
         </div> : <div className="slider-row-placeholder" aria-hidden="true"
-          style={{height: rowHeight ?? estimatedRowHeight(posts)}} />}
+          style={{height: estimatedRowHeight(posts)}} />}
       </div>
     </FocusContext.Provider>
   );

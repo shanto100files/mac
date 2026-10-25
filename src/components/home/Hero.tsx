@@ -169,7 +169,8 @@ export const Hero: React.FC<HeroProps> = ({ posts }) => {
         className={`hero-background hero-fade ${posterLike ? "poster-like" : ""}`}
         style={{ backgroundImage: posterLike ? undefined : `url(${bgImage})` }}
       >
-        {posterLike && artworkSize?.image && <BlurredBackdrop image={artworkSize.image} />}
+        {posterLike && artworkSize?.image && <BlurredBackdrop image={artworkSize.image}
+          active={inViewport && pageVisible && !scrolling} />}
       </div>
       <div className="hero-vignette" />
       {posterLike && (
