@@ -46,14 +46,14 @@ if (target === 'webos') {
     await mkdir(path.join(module,'src/turbo-modules'),{recursive:true});
     await cp(path.join(root,'tv/amazon-vega/NativeVegaTransport.ts'),path.join(module,'src/turbo-modules/NativeVegaTransport.ts'));
     run('npm',['install'],module);
-    // --new only for the initial code generation; generated signatures are checked below.
-    try {await access(path.join(module,'kepler/turbo-modules/VegaTransport.cpp'));}
-    catch {run('npx',['keplerscript-turbomodule-api','codegen','src/turbo-modules/NativeVegaTransport.ts','-o','kepler/turbo-modules/','--new','--namespace','VegaTransportModule'],module);}
+    // The SDK template already contains a sample implementation. Regenerate it
+    // from our interface on every build, then reapply our native host methods.
+    run('npx',['keplerscript-turbomodule-api','codegen','src/turbo-modules/NativeVegaTransport.ts','-o','kepler/turbo-modules/','--new','--namespace','VegaTransportModule'],module);
     const cppPath=path.join(module,'kepler/turbo-modules/VegaTransport.cpp');
     let cpp=await readFile(cppPath,'utf8');
     const start=/((?:std::)?string\s+VegaTransport::start\([^)]*\)\s*)\{[^}]*\}/;
     const stop=/(void\s+VegaTransport::stop\([^)]*\)\s*)\{[^}]*\}/;
-    if (!start.test(cpp)||!stop.test(cpp)) throw new Error('Amazon codegen signatures changed. Review VegaTransport.cpp before packaging.');
+    if (!start.test(cpp)||!stop.test(cpp)) throw new Error(`Amazon codegen signatures changed. Generated VegaTransport.cpp:\n${cpp}`);
     cpp=cpp.replace(start,'$1{ const char* url = vega_tv_start(); if (!url) throw std::runtime_error("Native host failed to start"); return std::string(url); }')
       .replace(stop,'$1{ vega_tv_stop(); }');
     if (!cpp.includes('extern "C" const char* vega_tv_start')) cpp='#include <stdexcept>\n#include <string>\nextern "C" const char* vega_tv_start();\nextern "C" void vega_tv_stop();\n'+cpp;

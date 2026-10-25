@@ -2,8 +2,8 @@ name: Set up Amazon Vega SDK
 description: Install the Vega SDK non-interactively on a GitHub-hosted Ubuntu runner
 inputs:
   sdk-version:
-    description: Amazon Vega SDK version (empty selects the latest published SDK)
-    default: ""
+    description: Amazon Vega SDK version
+    default: "0.24.12112"
 runs:
   using: composite
   steps:
