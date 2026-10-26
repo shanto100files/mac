@@ -27,9 +27,20 @@ import { toast } from "../lib/zustand/toastStore";
 
 import {exportBackup, pickBackup, restoreBackup} from "../lib/backup";
 import "./SettingsPage.css";
+import {CustomSelect} from '../components/CustomSelect';
 
 export const SettingsPage: React.FC = () => {
   const { primary, setPrimary } = useThemeStore();
+  const [uiScale, setUiScale] = React.useState(() => settingsStorage.getUiScale());
+  React.useEffect(() => {
+    const update = () => setUiScale(settingsStorage.getUiScale());
+    window.addEventListener('vega-ui-scale-change', update);
+    window.addEventListener('storage', update);
+    return () => {
+      window.removeEventListener('vega-ui-scale-change', update);
+      window.removeEventListener('storage', update);
+    };
+  }, []);
   const [appVersion, setAppVersion] = React.useState("Loading...");
   const [infoPageDynamicTheme, setInfoPageDynamicTheme] = React.useState(() =>
     settingsStorage.isInfoPageDynamicThemeEnabled(),
@@ -101,6 +112,18 @@ export const SettingsPage: React.FC = () => {
             <Monitor size={20} /> Appearance
           </h2>
           <div className="settings-card">
+            <div className="settings-row">
+              <div className="settings-info">
+                <h3 className="label-lg">UI Scale</h3>
+                <p className="body-md text-muted">Adjust the size of menus, text, and controls.</p>
+              </div>
+              <CustomSelect
+                value={String(uiScale)}
+                options={[75, 85, 90, 100, 110, 125, 150, 175, 200].map(value => ({value: String(value), label: value === 100 ? '100% (Default)' : `${value}%`}))}
+                onChange={value => settingsStorage.setUiScale(Number(value))}
+              />
+            </div>
+            <div className="settings-divider" />
             {/* Accent Color */}
             <div className="settings-row">
               <div className="settings-info">

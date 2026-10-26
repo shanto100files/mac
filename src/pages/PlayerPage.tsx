@@ -1114,6 +1114,14 @@ const DesktopPlayer: React.FC<any> = ({
         failedStreamsRef.current.add(currentLink);
       }
 
+      // A browser cannot use ordinary torrent peers. Cycling through every
+      // magnet after a timeout repeats discovery and hides the real error.
+      // Leave the source selected and let the user retry or choose a server.
+      if (selectedStream?.type === 'torrent' || isTorrentUrl(currentLink)) {
+        toast(errorMsg || 'Torrent playback failed. Select another source or retry.', 5000);
+        return;
+      }
+
       const currentStreams = Array.isArray(streamData) ? streamData : [];
       const currentIndex = currentStreams.findIndex(
         (s: any) => s?.link === currentLink,

@@ -1,0 +1,22 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {init,setFocus} from '@noriginmedia/norigin-spatial-navigation-core';
+import {PlayerControls} from '../../src/pages/PlayerControls.tsx';
+import '../../src/styles/index.css';
+import '../../src/pages/PlayerPage.css';
+localStorage.setItem('tvModeEnabled','true');
+init();
+const noop=()=>{};
+window.seekTest={calls:[],focus:()=>setFocus('PLAYER_TIMELINE')};
+createRoot(document.getElementById('root')).render(React.createElement(PlayerControls,{
+ visible:true,isPaused:true,isBuffering:false,currentTime:100,duration:3600,
+ primaryTitle:'Seek test',showNextEpisode:false,isFullscreen:false,isPip:false,isCropped:false,
+ audioTracks:[],subtitleTracks:[],playbackRate:1,
+ onSeek:time=>window.seekTest.calls.push(time),onBack:noop,onTogglePause:noop,
+ onToggleFullscreen:noop,onClickBackground:noop,onSelectAudioTrack:noop,
+ onSelectSubtitleTrack:noop,onSelectVideoTrack:noop,onPlaybackRateChange:noop,
+ onTogglePip:noop,onToggleCrop:noop
+}));
+</script></body></html>

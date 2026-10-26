@@ -4,7 +4,7 @@ import {isTauriRuntime} from "../../platform/host";
 export function isTorrentUrl(url?: string | null): boolean {
   if (!url) return false;
   const trimmed = url.trim().toLowerCase();
-  return trimmed.startsWith("magnet:") || trimmed.endsWith(".torrent");
+  return trimmed.startsWith("magnet:") || /\.torrent(?:[?#]|$)/.test(trimmed);
 }
 
 export function extractInfoHash(url?: string | null): string | null {

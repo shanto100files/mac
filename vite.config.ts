@@ -44,8 +44,10 @@ export default defineConfig(({ mode }) => {
       transformIndexHtml: {order:'post', handler(html) {
         const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
           .filter(match => !/\bsrc\s*=/.test(match[1])).map(match => `'sha256-${createHash('sha256').update(match[2]).digest('base64')}'`);
-        const policy = ["default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' ${hashes.join(' ')}`,
-          "style-src 'self' 'unsafe-inline'", "connect-src 'self' https: http: blob: data: ipc: asset: tauri:",
+        // Libmedia's worker bootstrap imports generated blob scripts. worker-src
+        // permits creating the worker; script-src also governs its imports.
+        const policy = ["default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' blob: ${hashes.join(' ')}`,
+          "style-src 'self' 'unsafe-inline'", "connect-src 'self' https: http: wss: blob: data: ipc: asset: tauri:",
           "img-src 'self' https: http: data: blob: asset:", "media-src 'self' https: http: blob: data: asset:",
           "font-src 'self' data:", "worker-src 'self' blob:", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"].join('; ');
         return [{tag:'meta', attrs:{'http-equiv':'Content-Security-Policy', content:policy}, injectTo:'head-prepend'}];

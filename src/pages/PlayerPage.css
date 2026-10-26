@@ -395,6 +395,9 @@ canvas.JASSUB {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
 }
 
 .timeline-time {
@@ -412,6 +415,7 @@ canvas.JASSUB {
 
 .timeline-track {
   flex: 1;
+  min-width: 0;
   height: 18px;
   background: transparent;
   cursor: pointer;
@@ -2063,20 +2067,22 @@ canvas.JASSUB {
 }
 
 .player-timeline.tv-focus {
+  /* The shared .tv-focus rule enlarges controls. A full-width timeline must
+     keep its bounds, especially at TV resolutions and larger UI scales. */
+  transform: none;
   outline: 2.5px solid var(--primary);
-  outline-offset: 4px;
+  outline-offset: -2.5px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 0 14px var(--primary-container);
-  padding: 4px 8px;
+  box-shadow: inset 0 0 14px var(--primary-container);
 }
 
 .player-timeline.tv-focus .timeline-track {
-  height: 8px;
+  height: 18px;
 }
 
 .player-timeline.tv-focus .timeline-thumb {
-  transform: scale(1.4);
+  transform: translateY(-50%) scale(1.4);
   box-shadow: 0 0 12px var(--primary);
 }
 

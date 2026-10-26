@@ -7,6 +7,17 @@ test('production web build boots and serves shared routes without native APIs', 
   const policy=await page.locator('meta[http-equiv="Content-Security-Policy"]').getAttribute('content');
   expect(policy).toContain("script-src 'self' 'wasm-unsafe-eval'");
   expect(policy).toContain("object-src 'none'");
+  // Match libmedia's blob worker plus importScripts bootstrap, rather than
+  // checking only that a worker can be constructed.
+  expect(await page.evaluate(() => new Promise((resolve, reject) => {
+    const imported=URL.createObjectURL(new Blob(['self.postMessage("imported")'],{type:'text/javascript'}));
+    const bootstrap=URL.createObjectURL(new Blob([`importScripts(${JSON.stringify(imported)})`],{type:'text/javascript'}));
+    const worker=new Worker(bootstrap);
+    const timer=setTimeout(()=>finish(new Error('Worker import timed out')),5000);
+    function finish(error,value){clearTimeout(timer);worker.terminate();URL.revokeObjectURL(imported);URL.revokeObjectURL(bootstrap);error?reject(error):resolve(value);}
+    worker.onmessage=event=>finish(null,event.data);
+    worker.onerror=event=>finish(new Error(event.message));
+  }))).toBe('imported');
   expect(await page.evaluate(() => {
     window.inlineProbe=false; const script=document.createElement('script'); script.textContent='window.inlineProbe=true'; document.head.append(script); script.remove();
     return window.inlineProbe;
@@ -21,8 +32,15 @@ test('production web build boots and serves shared routes without native APIs', 
   await navigation.getByRole('button', {name: 'Settings', exact: true}).click();
   await expect(page.getByRole('button', {name: 'Libmedia', exact: true})).toBeVisible();
   await expect(page.getByRole('button', {name: 'Built-in', exact: true})).toHaveCount(0);
+  await page.getByRole('button', {name: '100% (Default)', exact: true}).click();
+  await page.getByRole('option', {name: '125%', exact: true}).click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.zoom)).toBe('1.25');
   await page.reload();
   await expect(page.getByRole('heading', {name: 'Settings', exact: true})).toBeVisible();
+  await expect(page.getByRole('button', {name: '125%', exact: true})).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.style.zoom)).toBe('1.25');
+  await page.getByRole('button', {name: '125%', exact: true}).click();
+  await page.getByRole('option', {name: '100% (Default)', exact: true}).click();
   await navigation.getByRole('button', {name: 'Library', exact: true}).click();
   await expect(page.getByRole('button', {name: 'Import folder', exact: true})).toHaveCount(0);
   await page.goto('/downloads');

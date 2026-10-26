@@ -1,4 +1,5 @@
 import type {MediaSourceDescriptor} from '@vega/libmedia-engine/core/media';
+import {isTorrentSource} from '@vega/libmedia-engine/torrent-source';
 import {assertBrowserHeaders, getPlatformHost, isTauriRuntime, PlatformAccessError, waitForPlatformHost, requirePublicDestinationChecks} from './host';
 
 const owners = new WeakMap<MediaSourceDescriptor, (id: string) => Promise<void>>();
@@ -11,6 +12,11 @@ export async function releaseMediaSource(source?: MediaSourceDescriptor): Promis
 
 /** Source preparation belongs to the host, not the shared decoding engine. */
 export async function prepareMediaSource(source: MediaSourceDescriptor): Promise<MediaSourceDescriptor> {
+  if (isTorrentSource(source.source,source.format)) {
+    if (!isTauriRuntime()) return {...source,headers:undefined};
+    const {resolveTorrentStreamUrl} = await import('../lib/services/torrentStreamService');
+    return {...source,source:await resolveTorrentStreamUrl(source.source),format:undefined,headers:undefined};
+  }
   if (isTauriRuntime()) {
     const {prepareTauriMediaSource} = await import('./tauri/mediaDelivery');
     return prepareTauriMediaSource(source);

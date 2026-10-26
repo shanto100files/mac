@@ -55,15 +55,14 @@
   height: 30px;
   flex: 0 0 30px;
   background-color: var(--primary);
-  opacity: 0.72;
-  -webkit-mask-image: url("/vega-app-icon.png");
-  mask-image: url("/vega-app-icon.png");
+  -webkit-mask-image: url("/vega-brand-icon.svg");
+  mask-image: url("/vega-brand-icon.svg");
   -webkit-mask-position: center;
   mask-position: center;
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-size: 200% 200%;
-  mask-size: 200% 200%;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .sidebar-brand-name {

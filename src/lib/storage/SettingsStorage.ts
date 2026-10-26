@@ -25,6 +25,7 @@ export enum SettingsKeys {
   SHOW_TAB_BAR_LABELS = "showTabBarLabels",
   CUSTOM_COLOR = "customColor",
   TV_MODE_ENABLED = "tvModeEnabled",
+  UI_SCALE = "uiScale",
   VERIFICATION_WINDOWS = "verificationWindows",
   INFO_PAGE_DYNAMIC_THEME = "infoPageDynamicTheme",
   SHOW_CONTINUE_WATCHING = "showContinueWatching",
@@ -89,6 +90,17 @@ export enum SettingsKeys {
  * Settings storage manager
  */
 export class SettingsStorage {
+  getUiScale(): number {
+    const value = mainStorage.getNumber(SettingsKeys.UI_SCALE);
+    return typeof value === 'number' && Number.isFinite(value) ? Math.max(75, Math.min(200, value)) : 100;
+  }
+
+  setUiScale(value: number): void {
+    const scale = Number.isFinite(value) ? Math.max(75, Math.min(200, value)) : 100;
+    mainStorage.setNumber(SettingsKeys.UI_SCALE, scale);
+    window.dispatchEvent(new Event('vega-ui-scale-change'));
+  }
+
   getVerificationWindowPolicy(): VerificationWindowPolicy {
     const value = mainStorage.getString(SettingsKeys.VERIFICATION_WINDOWS);
     return value === 'block' || value === 'allow' ? value : 'ask';

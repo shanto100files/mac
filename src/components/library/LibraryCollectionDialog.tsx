@@ -80,6 +80,16 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
   const [color, setColor] = useState<string | undefined>(undefined);
   const [iconTab, setIconTab] = useState<IconTab>("icons");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const iconGridRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    iconGridRef.current?.scrollTo({top: 0, left: 0, behavior: 'instant'});
+  }, [iconTab]);
+
+  const focusControl = (key: string) => {
+    if (!doesFocusableExist(key)) return true;
+    setFocus(key);
+    return false;
+  };
 
   const editing = step === "edit" && Boolean(collection) && !item;
 
@@ -299,6 +309,7 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
           <LibraryIcon icon={icon} color={color} size={24} tile />
           <FocusableInput
             focusKey={NAME_KEY}
+            onArrowPress={direction => direction === 'down' ? focusControl(`LIB_DLG_TAB_${iconTab}`) : true}
             wrapperClassName="extension-dialog-input library-name-input"
             type="text"
             placeholder="Category name"
@@ -324,21 +335,41 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
               aria-selected={iconTab === tab}
               className={`library-icon-tab${iconTab === tab ? " selected" : ""}`}
               onClick={() => setIconTab(tab)}
+              onArrowPress={direction => direction === 'down'
+                ? focusControl(`LIB_DLG_ICON_${iconTab}_${Math.max(0, choices.indexOf(icon))}`)
+                : direction === 'up' ? focusControl(NAME_KEY) : true}
             >
               {tab === "icons" ? "Icons" : "Emoji"}
             </FocusableButton>
           ))}
         </div>
 
-        <div className="library-icon-grid" role="listbox" aria-label="Icon">
-          {choices.map((choice) => (
+        <div ref={iconGridRef} className="library-icon-grid" role="listbox" aria-label="Icon">
+          {choices.map((choice, index) => (
             <FocusableButton
               key={choice}
+              focusKey={`LIB_DLG_ICON_${iconTab}_${index}`}
               role="option"
               aria-selected={icon === choice}
               aria-label={`Icon ${choice}`}
               className={`library-icon-choice${icon === choice ? " selected" : ""}`}
               onClick={() => setIcon(choice)}
+              onArrowPress={direction => {
+                // Offscreen icons remain registered in the scrolling grid.
+                // Navigate by grid index so they cannot trap spatial focus
+                // above the colors and footer (including a partial last row).
+                const columns = iconGridRef.current
+                  ? getComputedStyle(iconGridRef.current).gridTemplateColumns.split(' ').length : 1;
+                if (direction === 'down') return index + columns < choices.length
+                  ? focusControl(`LIB_DLG_ICON_${iconTab}_${index + columns}`)
+                  : focusControl(`LIB_DLG_COLOR_${Math.max(0, [undefined, ...LIBRARY_COLORS].indexOf(color))}`);
+                if (direction === 'up') return index >= columns
+                  ? focusControl(`LIB_DLG_ICON_${iconTab}_${index - columns}`)
+                  : focusControl(`LIB_DLG_TAB_${iconTab}`);
+                if (direction === 'right' && index + 1 < choices.length) return focusControl(`LIB_DLG_ICON_${iconTab}_${index + 1}`);
+                if (direction === 'left' && index > 0) return focusControl(`LIB_DLG_ICON_${iconTab}_${index - 1}`);
+                return false;
+              }}
             >
               <LibraryIcon icon={choice} color={color} size={22} />
             </FocusableButton>
@@ -346,15 +377,23 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
         </div>
 
         <div className="library-color-row" role="radiogroup" aria-label="Color">
-          {[undefined, ...LIBRARY_COLORS].map((swatch) => (
+          {[undefined, ...LIBRARY_COLORS].map((swatch, index) => (
             <FocusableButton
               key={swatch || "default"}
+              focusKey={`LIB_DLG_COLOR_${index}`}
               role="radio"
               aria-checked={color === swatch}
               aria-label={swatch ? `Color ${swatch}` : "Theme color"}
               className={`library-color-swatch${color === swatch ? " selected" : ""}`}
               style={{ background: swatch || "var(--primary-container)" }}
               onClick={() => setColor(swatch)}
+              onArrowPress={direction => {
+                if (direction === 'up') return focusControl(`LIB_DLG_ICON_${iconTab}_${choices.length - 1}`);
+                if (direction === 'down') return focusControl(editing ? 'LIB_DLG_DELETE' : 'LIB_DLG_CANCEL');
+                if (direction === 'left' && index > 0) return focusControl(`LIB_DLG_COLOR_${index - 1}`);
+                if (direction === 'right' && index < LIBRARY_COLORS.length) return focusControl(`LIB_DLG_COLOR_${index + 1}`);
+                return false;
+              }}
             >
               {color === swatch && <Check size={14} />}
             </FocusableButton>
@@ -371,6 +410,7 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
           {editing ? (
             <FocusableButton
               focusKey="LIB_DLG_DELETE"
+              onArrowPress={direction => direction === 'up' ? focusControl('LIB_DLG_COLOR_0') : true}
               className="dialog-danger-button"
               onClick={handleDelete}
             >
@@ -379,6 +419,7 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
           ) : (
             <FocusableButton
               focusKey="LIB_DLG_CANCEL"
+              onArrowPress={direction => direction === 'up' ? focusControl('LIB_DLG_COLOR_0') : true}
               className="dialog-text-button"
               onClick={backOrClose}
             >
@@ -387,6 +428,7 @@ export const LibraryCollectionDialog: React.FC<LibraryCollectionDialogProps> = (
           )}
           <FocusableButton
             focusKey="LIB_DLG_SAVE"
+            onArrowPress={direction => direction === 'up' ? focusControl('LIB_DLG_COLOR_0') : true}
             className="dialog-primary-button"
             disabled={!canSave}
             onClick={handleSave}

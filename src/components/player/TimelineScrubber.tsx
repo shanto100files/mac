@@ -7,13 +7,11 @@ import type { SkipInterval } from "../../lib/providers/types";
 
 interface TimelineScrubberProps {
   duration: number;
-  currentTime: number;
-  pendingSeekTime: number | null;
   renderedTime: number;
   progressPercent: number;
   cachePercent: number;
   formatTime: (timeInSeconds: number) => string;
-  onSeek: (time: number) => void;
+  onSeekRelative: (offset: number) => void;
   onScrubbingChange?: (scrubbing: boolean) => void;
   chapters?: MpvChapter[];
   skips?: SkipInterval[];
@@ -28,13 +26,11 @@ interface TimelineScrubberProps {
 
 export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   duration,
-  currentTime,
-  pendingSeekTime,
   renderedTime,
   progressPercent,
   cachePercent,
   formatTime,
-  onSeek,
+  onSeekRelative,
   onScrubbingChange,
   chapters = [],
   skips = [],
@@ -59,13 +55,11 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
     focusable: canFocus,
     onArrowPress: (direction) => {
       if (direction === "left") {
-        const target = Math.max(0, (pendingSeekTime ?? currentTime) - 10);
-        onSeek(target);
+        onSeekRelative(-10);
         return false;
       }
       if (direction === "right") {
-        const target = Math.min(duration || currentTime + 10, (pendingSeekTime ?? currentTime) + 10);
-        onSeek(target);
+        onSeekRelative(10);
         return false;
       }
       return true; // Allow up/down to navigate to center controls / bottom row

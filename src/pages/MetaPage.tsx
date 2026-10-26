@@ -4,7 +4,7 @@ import {applyProviderEpisodeMetadata} from '../lib/providerEpisodeMetadata';
 import {LocalSeasonList} from '../components/content/LocalSeasonList';
 import React, { useEffect, useMemo, useState, useRef } from "react";
 import { openExternalUrl as openUrl } from "../platform/externalLinks";
-import {isTauriRuntime} from "../platform/host";
+import {isTauriRuntime, supportsMediaDownloads} from "../platform/host";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FocusContext, useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
 import { resume } from "@noriginmedia/norigin-spatial-navigation-core";
@@ -188,6 +188,7 @@ export const MetaPage: React.FC = () => {
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
   const isAndroid = navigator.userAgent.toLowerCase().includes("android");
   const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const canDownload = supportsMediaDownloads();
   const { ref: focusRef, focusKey } = useFocusable({ focusable: tvMode, trackChildren: true });
 
   const link = url?.startsWith("vega-local:") ? url : decodeURIComponent(url || "");
@@ -445,6 +446,7 @@ export const MetaPage: React.FC = () => {
     exactId?: string,
     isLongPress = false,
   ) => {
+    if (!canDownload) return;
     const id = exactId || `${title}_S${groupTitle}_E${index + 1}`;
     const stored =
       (downloads[id] && isVideoDownloadItem(downloads[id])
@@ -541,6 +543,7 @@ export const MetaPage: React.FC = () => {
   };
 
   const executeDownloadVideo = async (targetContext: DialogContext, stream: Stream) => {
+    if (!canDownload) return;
     if(!isTauriRuntime()) {await openUrl(stream.link);return;}
     const resolvedSkip =
       stream.skip && stream.skip.length > 0
@@ -613,6 +616,7 @@ export const MetaPage: React.FC = () => {
   };
 
   const selectSubtitle = async (sub: { uri: string; title: string; language?: string; type?: string }) => {
+    if (!canDownload) return;
     if (!dialogContext) return;
     if(!isTauriRuntime()){
       await openUrl(sub.uri);
@@ -929,7 +933,7 @@ export const MetaPage: React.FC = () => {
                       progressPercent={progressPercent}
                       watched={progressPercent > 85}
                       download={storedDownload}
-                      hideDownload={false}
+                      hideDownload={!canDownload}
                       hasDownloadedSubtitles={hasDownloadedSubtitles}
                       extracting={extractingId === id}
                       selecting={selectingEpisodes}

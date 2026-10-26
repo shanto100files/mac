@@ -259,6 +259,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   const [showOnlineSearch, setShowOnlineSearch] = useState(false);
   const [pendingSeekTime, setPendingSeekTime] = useState<number | null>(null);
   const pendingSeekTimerRef = useRef<number | null>(null);
+  const pendingSeekRef = useRef<number | null>(null);
+  const seekCommitTimerRef = useRef<number | null>(null);
   const showSeekButtons = !settingsStorage.hideSeekButtons();
 
   const hasOpenMenu = Boolean(openMenu || showOnlineSearch);
@@ -283,6 +285,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   useEffect(() => {
     thumbnailCacheRef.current.clear();
+    pendingSeekRef.current = null;
+    setPendingSeekTime(null);
+    if (seekCommitTimerRef.current) clearTimeout(seekCommitTimerRef.current);
+    seekCommitTimerRef.current = null;
     pendingPreviewBucketRef.current = null;
     queuedPreviewBucketRef.current = null;
     previewRequestRef.current += 1;
@@ -386,7 +392,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   useEffect(() => {
     if (pendingSeekTime !== null) {
-      if (!isBuffering || Math.abs(currentTime - pendingSeekTime) <= 1.2) {
+      if (seekCommitTimerRef.current === null && Math.abs(currentTime - pendingSeekTime) <= 1.2) {
+        pendingSeekRef.current = null;
         setPendingSeekTime(null);
         if (pendingSeekTimerRef.current) {
           clearTimeout(pendingSeekTimerRef.current);
@@ -401,6 +408,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       if (pendingSeekTimerRef.current) {
         clearTimeout(pendingSeekTimerRef.current);
       }
+      if (seekCommitTimerRef.current) clearTimeout(seekCommitTimerRef.current);
     };
   }, []);
 
@@ -482,6 +490,8 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   const handleTrackMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      if (seekCommitTimerRef.current) clearTimeout(seekCommitTimerRef.current);
+      seekCommitTimerRef.current = null;
       draggingTimelineRef.current = true;
       onScrubbingChange?.(true);
       const startTime = updateTimelinePreview(e);
@@ -504,14 +514,16 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         document.removeEventListener("mouseup", onUp);
 
         if (seekTime !== null) {
+          pendingSeekRef.current = seekTime;
           setPendingSeekTime(seekTime);
           onSeek(seekTime);
           if (pendingSeekTimerRef.current) {
             clearTimeout(pendingSeekTimerRef.current);
           }
           pendingSeekTimerRef.current = window.setTimeout(() => {
+            pendingSeekRef.current = null;
             setPendingSeekTime(null);
-          }, 2000);
+          }, 15000);
         } else {
           setPendingSeekTime(null);
         }
@@ -525,17 +537,29 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   const handleCenterSeek = useCallback(
     (targetTime: number) => {
       const clamped = Math.max(0, Math.min(duration || targetTime, targetTime));
+      pendingSeekRef.current = clamped;
       setPendingSeekTime(clamped);
-      onSeek(clamped);
+      onScrubbingChange?.(true);
+      if (seekCommitTimerRef.current) clearTimeout(seekCommitTimerRef.current);
+      // Held remote/gamepad input previews continuously. Do not queue an
+      // expensive engine seek for every key repeat or use stale engine time.
+      seekCommitTimerRef.current = window.setTimeout(() => {
+        seekCommitTimerRef.current = null;
+        onSeek(clamped);
+        onScrubbingChange?.(false);
+      }, 180);
       if (pendingSeekTimerRef.current) {
         clearTimeout(pendingSeekTimerRef.current);
       }
       pendingSeekTimerRef.current = window.setTimeout(() => {
+        pendingSeekRef.current = null;
         setPendingSeekTime(null);
-      }, 2000);
+      }, 15000);
     },
-    [duration, onSeek],
+    [duration, onSeek, onScrubbingChange],
   );
+  const handleRelativeSeek = (offset: number) =>
+    handleCenterSeek((pendingSeekRef.current ?? currentTime) + offset);
 
   if (isPip) {
     const handleDrag = async (e: React.MouseEvent) => {
@@ -647,9 +671,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               focusable={true}
               focusKey="PLAYER_REWIND"
               onClick={() =>
-                handleCenterSeek(
-                  Math.max(0, (pendingSeekTime ?? currentTime) - 10),
-                )
+                handleRelativeSeek(-10)
               }
               title="Rewind 10 seconds"
               aria-label="Rewind 10 seconds"
@@ -685,12 +707,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               focusable={true}
               focusKey="PLAYER_FORWARD"
               onClick={() =>
-                handleCenterSeek(
-                  Math.min(
-                    duration || currentTime + 10,
-                    (pendingSeekTime ?? currentTime) + 10,
-                  ),
-                )
+                handleRelativeSeek(10)
               }
               title="Forward 10 seconds"
               aria-label="Forward 10 seconds"
@@ -707,13 +724,11 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           <TimelineScrubber
             focusable={visible && tvMode}
             duration={duration}
-            currentTime={currentTime}
-            pendingSeekTime={pendingSeekTime}
             renderedTime={renderedTime}
             progressPercent={progressPercent}
             cachePercent={cachePercent}
             formatTime={formatTime}
-            onSeek={onSeek}
+            onSeekRelative={handleRelativeSeek}
             onScrubbingChange={onScrubbingChange}
             chapters={chapters}
             skips={skips}
