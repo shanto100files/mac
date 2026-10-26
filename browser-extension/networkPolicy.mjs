@@ -1,14 +1,14 @@
-//#region \0rolldown/runtime.js
-var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t), e = null), t.exports), s = (e, i, o, s) => {
+// \0rolldown/runtime.js
+var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescriptor, r = Object.getOwnPropertyNames, i = Object.getPrototypeOf, a = Object.prototype.hasOwnProperty, o = (e, t) => () => (t || (e((t = { exports: {} }).exports, t, t.exports), e = null), t.exports), s = (e, i, o, s) => {
 	if (i && typeof i == "object" || typeof i == "function") for (var c = r(i), l = 0, u = c.length, d; l < u; l++) d = c[l], !a.call(e, d) && d !== o && t(e, d, {
 		get: ((e) => i[e]).bind(null, d),
 		enumerable: !(s = n(i, d)) || s.enumerable
 	});
 	return e;
-}, c = /* @__PURE__ */ ((n, r, a) => (a = n == null ? {} : e(i(n)), s(r || !n || !n.__esModule ? t(a, "default", {
+}, c = /* @__PURE__ */ ((n, r, a) => (a = n == null ? {} : e(i(n)), s(t(a, "default", {
 	value: n,
 	enumerable: !0
-}) : a, n)))((/* @__PURE__ */ o(((e, t) => {
+}), n)))((/* @__PURE__ */ o(((e, t, n) => {
 	(function(e) {
 		let n = "(0?\\d+|0x[a-f0-9]+)", r = {
 			fourOctet: RegExp(`^${n}\\.${n}\\.${n}\\.${n}$`, "i"),
@@ -278,21 +278,20 @@ var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescr
 			if (t = e.match(r.longValue)) {
 				if (i = d(t[1]), i > 4294967295 || i < 0) throw Error("ipaddr: address outside defined range");
 				return (function() {
-					let e = [], t;
-					for (t = 0; t <= 24; t += 8) e.push(i >> t & 255);
+					let e = [], t = 0;
+					for (; t <= 24; t += 8) e.push(i >> t & 255);
 					return e;
 				})().reverse();
-			} else if (t = e.match(r.twoOctet)) return (function() {
+			}
+			return (t = e.match(r.twoOctet)) ? (function() {
 				let e = t.slice(1, 4), n = [];
 				if (i = d(e[1]), i > 16777215 || i < 0) throw Error("ipaddr: address outside defined range");
 				return n.push(d(e[0])), n.push(i >> 16 & 255), n.push(i >> 8 & 255), n.push(i & 255), n;
-			})();
-			else if (t = e.match(r.threeOctet)) return (function() {
+			})() : (t = e.match(r.threeOctet)) ? (function() {
 				let e = t.slice(1, 5), n = [];
 				if (i = d(e[2]), i > 65535 || i < 0) throw Error("ipaddr: address outside defined range");
 				return n.push(d(e[0])), n.push(d(e[1])), n.push(i >> 8 & 255), n.push(i & 255), n;
-			})();
-			else return null;
+			})() : null;
 		}, p.IPv4.subnetMaskFromPrefixLength = function(e) {
 			if (e = parseInt(e), e < 0 || e > 32) throw Error("ipaddr: invalid IPv4 prefix length");
 			let t = [
@@ -695,7 +694,7 @@ var e = Object.create, t = Object.defineProperty, n = Object.getOwnPropertyDescr
 			}
 			return n;
 		}, t !== void 0 && t.exports ? t.exports = p : e.ipaddr = p;
-	})(e);
+	})(n);
 })))(), 1);
 function l(e) {
 	try {
@@ -703,7 +702,7 @@ function l(e) {
 		if (t.range() !== "unicast") return !1;
 		if (t.kind() === "ipv6") {
 			let e = t.toByteArray();
-			return (e[0] & 224) == 32 && !(e[0] === 32 && e[1] === 2) && !(e[0] === 32 && e[1] === 1 && (e[2] < 2 || e[2] === 13 && e[3] === 184));
+			return (e[0] & 224) == 32 && (e[0] !== 32 || e[1] !== 2) && !(e[0] === 32 && e[1] === 1 && (e[2] < 2 || e[2] === 13 && e[3] === 184));
 		}
 		return !0;
 	} catch {
@@ -715,5 +714,4 @@ function u(e) {
 	if (!["http:", "https:"].includes(t.protocol) || t.username || t.password || !n || !n.includes(".") && !n.includes(":") || /(?:^|\.)(?:localhost|local|internal|lan|home|test|invalid)$/.test(n) || n.endsWith(".home.arpa") || c.default.isValid(n) && !l(n)) throw Error("Provider destination is blocked: only public HTTP(S) servers are allowed.");
 	return t;
 }
-//#endregion
 export { l as isPublicAddress, u as publicHttpUrl };

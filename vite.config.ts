@@ -7,6 +7,7 @@ import process from "node:process";
 // @ts-expect-error type error without @types/node package
 import { readFileSync } from "node:fs";
 import {createHash} from 'node:crypto';
+import {legacyWebosPlugin} from './scripts/legacy-webos.mjs';
 const host = process.env.TAURI_DEV_HOST;
 
 const getSharedMobileTmdbKey = () => {
@@ -21,7 +22,8 @@ const getSharedMobileTmdbKey = () => {
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
-  const tvHost = mode === 'webos' ? 'webos' : mode === 'amazon-vega' ? 'amazon-vega' : '';
+  const legacyWebos = mode === 'webos-legacy';
+  const tvHost = mode === 'webos' || legacyWebos ? 'webos' : mode === 'amazon-vega' ? 'amazon-vega' : '';
   const webBuild = mode === "web" || !!tvHost;
   const desktopEnv = loadEnv(mode, process.cwd(), "");
   const tmdbApiKey =
@@ -39,11 +41,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: tvHost ? './' : '/',
-    plugins: [react(), tailwindcss(), libmediaChunkPlugin(), {
+    plugins: [react(), tailwindcss(), libmediaChunkPlugin(), ...(legacyWebos ? [legacyWebosPlugin()] : []), {
       name:'production-script-policy', apply:'build',
       transformIndexHtml: {order:'post', handler(html) {
         const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
-          .filter(match => !/\bsrc\s*=/.test(match[1])).map(match => `'sha256-${createHash('sha256').update(match[2]).digest('base64')}'`);
+          .filter(match => !/\bsrc\s*=/.test(match[1])).map(match => `'sha256-${createHash('sha256').update(match[2].replace(/\r\n?/g,'\n')).digest('base64')}'`);
         // Libmedia's worker bootstrap imports generated blob scripts. worker-src
         // permits creating the worker; script-src also governs its imports.
         const policy = ["default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' blob: ${hashes.join(' ')}`,
@@ -55,6 +57,7 @@ export default defineConfig(({ mode }) => {
     }],
     optimizeDeps: {exclude:["@libmedia/avplayer"], include:['quickjs-emscripten', '@jitl/quickjs-singlefile-browser-release-sync', '@jitl/quickjs-wasmfile-release-sync', 'ipaddr.js']},
     define: {
+      'import.meta.env.VITE_LEGACY_WEBOS': JSON.stringify(legacyWebos),
       'import.meta.env.VITE_TV_HOST': JSON.stringify(tvHost),
       ...(tvHost ? {'import.meta.env.VITE_TV_MODE': JSON.stringify('true')} : {}),
       "import.meta.env.VITE_TMDB_API_KEY": JSON.stringify(tmdbApiKey),
@@ -83,12 +86,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     build: {
-      outDir: tvHost ? `dist-tv/${tvHost}/ui` : webBuild ? "dist-web" : "dist",
+      outDir: legacyWebos ? 'dist-tv/webos-legacy/ui' : tvHost ? `dist-tv/${tvHost}/ui` : webBuild ? "dist-web" : "dist",
       target:
-        webBuild ? "es2022" : process.env.TAURI_ENV_PLATFORM === "windows"
+        legacyWebos ? 'chrome68' : webBuild ? "es2022" : process.env.TAURI_ENV_PLATFORM === "windows"
           ? "chrome105"
           : "safari13",
       sourcemap: !!process.env.TAURI_ENV_DEBUG,
     },
+    ...(legacyWebos ? {worker:{format:'iife' as const}} : {}),
   };
 });

@@ -17,7 +17,6 @@
     "test:libmedia": "node --test tests/libmedia-adapter.test.mjs",
     "test:platform": "node --test tests/platform.test.mjs tests/provider-cookies.test.mjs tests/verification-consent.test.mjs tests/provider-auto-updates.test.mjs",
     "test:libmedia:browser": "playwright test",
-    "sync:libmedia": "node scripts/sync-libmedia.mjs",
     "tauri": "tauri",
     "postinstall": "node scripts/setup-ffmpeg.mjs && node scripts/setup-proxies.mjs && node scripts/setup-libmpv.mjs",
     "build:msix": "npx -y cross-env VITE_IS_MS_STORE=true tauri-windows-bundle build --arch x64 --runner npm",
@@ -27,8 +26,10 @@
     "package:webos": "node scripts/build-tv.mjs webos --package",
     "build:amazon-vega": "node scripts/build-tv.mjs amazon-vega",
     "package:amazon-vega": "node scripts/build-tv.mjs amazon-vega --package",
-    "test:tv": "node --test tests/tv-host.test.mjs",
-    "test:tv:browser": "npm run build:webos && npm run build:amazon-vega && cargo build --locked --manifest-path tv/native-host/Cargo.toml && playwright test --config playwright.tv.config.mjs"
+    "test:tv": "node --test tests/tv-host.test.mjs tests/webos-legacy.test.mjs",
+    "test:tv:browser": "npm run build:webos && npm run build:amazon-vega && cargo build --locked --manifest-path tv/native-host/Cargo.toml && playwright test --config playwright.tv.config.mjs",
+    "build:webos:legacy": "node scripts/build-tv.mjs webos-legacy",
+    "package:webos:legacy": "node scripts/build-tv.mjs webos-legacy --package"
   },
   "dependencies": {
     "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",
@@ -52,11 +53,12 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@tauri-apps/plugin-upload": "^2.4.0",
     "@tauri-apps/plugin-window-state": "^2.4.1",
-    "@vega/libmedia-engine": "file:vendor/vega-libmedia-engine-0.1.0.tgz",
+    "@vega/libmedia-engine": "https://codeload.github.com/vega-org/web-player-engine/tar.gz/c8e040d948d362455bd41220073ec96adeb6fe47",
     "axios": "^1.18.0",
     "cheerio": "^1.2.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "core-js": "3.47.0",
     "core-js-pure": "3.47.0",
     "hls.js": "^1.7.2",
     "ipaddr.js": "2.3.0",
@@ -81,11 +83,21 @@
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
+    "binaryen": "132.0.0",
+    "flex-gap-polyfill": "^5.0.0",
+    "postcss": "^8.5.31",
+    "postcss-preset-env": "^10.6.1",
+    "postcss-value-parser": "^4.2.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.3.5"
   },
   "optionalDependencies": {
-    "wrangler": "4.80.0"
+    "wrangler": "4.152.0"
+  },
+  "overrides": {
+    "miniflare": {
+      "undici": "7.30.1"
+    }
   }
 }

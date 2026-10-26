@@ -3,10 +3,12 @@ import {spawnSync} from 'node:child_process';
 import {cp, mkdir, readFile, writeFile, access, rm} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {builtinModules} from 'node:module';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const target = process.argv[2], packaging = process.argv.includes('--package');
-if (!['webos','amazon-vega'].includes(target)) throw new Error('Choose webos or amazon-vega');
+if (!['webos','webos-legacy','amazon-vega'].includes(target)) throw new Error('Choose webos, webos-legacy or amazon-vega');
+const legacy=target==='webos-legacy';
 const out = path.join(root,'dist-tv',target);
 async function resetGenerated(directory) {
   const resolved=path.resolve(directory);
@@ -22,15 +24,22 @@ run(process.execPath,['scripts/setup-libmedia.mjs']);
 run(process.execPath,['scripts/setup-provider-sandbox.mjs']);
 run(process.platform==='win32'?'npx.cmd':'npx',['tsc','--noEmit']);
 await build({root,mode:target});
-if (target === 'webos') {
+if (target === 'webos' || legacy) {
   await resetGenerated(path.join(out,'app'));
   await resetGenerated(path.join(out,'service'));
   await cp(path.join(root,'tv/webos/app'),path.join(out,'app'),{recursive:true});
   const service = path.join(out,'service');
   await cp(path.join(root,'tv/webos/service'),service,{recursive:true});
   await cp(path.join(out,'ui'),path.join(service,'ui'),{recursive:true});
-  await build({root,configFile:false,publicDir:false,logLevel:'warn',build:{target:'node16',outDir:service,emptyOutDir:false,
+  await build({root,configFile:false,publicDir:false,logLevel:'warn',build:{target:legacy?'node8':'node16',outDir:service,emptyOutDir:false,
     lib:{entry:path.join(root,'src/platform/publicNetworkPolicy.ts'),formats:['cjs'],fileName:()=> 'networkPolicy.cjs'}}});
+  if(legacy){
+    await build({root,configFile:false,publicDir:false,logLevel:'warn',plugins:[{
+      name:'legacy-policy-location',renderChunk(code){return code.replace(/require\((['"])[^'"]*networkPolicy\.cjs\1\)/g,'require("./networkPolicy.cjs")');},
+    }],build:{target:'node8',outDir:service,emptyOutDir:false,
+      rolldownOptions:{external:['webos-service','./networkPolicy.cjs',...builtinModules]},
+      lib:{entry:path.join(root,'tv/webos/legacy/service.cjs'),formats:['cjs'],fileName:()=> 'service.cjs'}}});
+  }
   const pkg=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));
   const info=JSON.parse(await readFile(path.join(out,'app/appinfo.json'),'utf8'));info.version=pkg.version;
   await writeFile(path.join(out,'app/appinfo.json'),JSON.stringify(info,null,2));

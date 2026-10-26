@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import {isTauriRuntime} from "../../platform/host";
-import {LibmediaPlayerAdapter} from "../player/LibmediaPlayerAdapter";
+import type {LibmediaPlayerAdapter} from "../player/LibmediaPlayerAdapter";
 import type {PlayerEngine} from "../player/PlayerEngine";
 import { HtmlVideoEngine } from "../player/HtmlVideoEngine";
 import type { PlayerEngineState } from "../player/PlayerEngine";
@@ -24,6 +24,16 @@ export function usePlayerEngine(
   opts?: UsePlayerEngineOptions,
   engineKind: "builtin" | "libmedia" = "builtin",
 ) {
+  const libmediaAdapterRef=useRef<typeof LibmediaPlayerAdapter|null>(null);
+  const [libmediaReady,setLibmediaReady]=useState(false);
+  useEffect(()=>{
+    if(engineKind!=="libmedia")return;
+    let active=true;
+    void import('../player/LibmediaPlayerAdapter').then(module=>{
+      if(active){libmediaAdapterRef.current=module.LibmediaPlayerAdapter;setLibmediaReady(true);}
+    }).catch(error=>{if(active)setInitError(error?.message||'Libmedia is unavailable on this device');});
+    return ()=>{active=false;};
+  },[engineKind]);
   const [engineState, setEngineState] = useState<PlayerEngineState>({
     isInitialized: true,
     isPaused: true,
@@ -96,6 +106,8 @@ export function usePlayerEngine(
   );
 
   const setupEngine = useCallback((el: HTMLVideoElement): PlayerEngine | null => {
+    const libmediaAdapter=libmediaAdapterRef.current;
+    if(engineKind==='libmedia'&&!libmediaAdapter)return null;
     if (engineRef.current) {
       if (engineVideoRef.current === el) return engineRef.current;
       engineRef.current.destroy();
@@ -103,7 +115,7 @@ export function usePlayerEngine(
     }
 
     try {
-      const engine = engineKind === "libmedia" ? new LibmediaPlayerAdapter(el) : new HtmlVideoEngine(el);
+      const engine = engineKind === "libmedia" ? new libmediaAdapter!(el) : new HtmlVideoEngine(el);
       engineRef.current = engine;
       engineVideoRef.current = el;
       setInitError(null);
@@ -172,7 +184,7 @@ export function usePlayerEngine(
     if (!el) return;
 
     setupEngine(el);
-  }, [resolveVideoElement, setupEngine]);
+  }, [resolveVideoElement, setupEngine,libmediaReady]);
 
   // Resolving a ref can rerun setup for the same element. Only dispose on
   // unmount or a change of engine/ref ownership, not that state update.

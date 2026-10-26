@@ -54,6 +54,9 @@ async function startHost({root, port = 32177, policy, open:providedOpen} = {}) {
     active.add(controller);
     res.on('close', () => {controller.abort();active.delete(controller);});
     const stopTimer = setTimeout(() => controller.abort(), 120_000);
+    // Node 8 emits response `close` only when the keep-alive socket closes.
+    // Completed responses must release their slot immediately on every runtime.
+    res.once('finish', () => {clearTimeout(stopTimer);active.delete(controller);});
     try {
       if (req.headers.host !== new URL(base).host || req.headers.origin && req.headers.origin !== base) fail('Unauthorized TV host origin');
       res.setHeader('Referrer-Policy', 'no-referrer'); res.setHeader('X-Content-Type-Options', 'nosniff'); res.setHeader('Cache-Control', 'no-store');

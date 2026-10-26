@@ -2,21 +2,20 @@
 
 Playback, seeking, codec diagnostics, embedded audio/subtitles and libmedia
 patches come from `@vega/libmedia-engine`. Its source is maintained at
-`vega-site/packages/libmedia-engine`. Desktop consumes the versioned archive
-in `vendor/`, rather than keeping a second implementation. Normal `npm install`,
-`npm run dev` and `npm run build` work without the site checkout.
+[vega-org/web-player-engine](https://github.com/vega-org/web-player-engine).
+Desktop and Cast install the same exact Git commit directly from GitHub over HTTPS.
+There is no npm publication, vendored archive or sibling checkout requirement.
+Normal `npm ci`, development and release builds fetch the pinned dependency.
 
-To bring shared changes into desktop:
+After committing and pushing an engine change, update both consumers:
 
-```powershell
-npm run sync:libmedia
-npm run test:libmedia
-npm run test:libmedia:browser
-npm run build
+```sh
+npm install --ignore-scripts --save-exact @vega/libmedia-engine@https://codeload.github.com/vega-org/web-player-engine/tar.gz/<full-commit-sha>
 ```
 
-Commit the updated archive, package manifest and lockfile. To use a different
-source directory: `npm run sync:libmedia -- C:\path\to\libmedia-engine`.
+In Vega Site, add `--workspace @vega/web-cast`. Commit the manifests and
+lockfiles, run the engine/host tests and rebuild each app. GitHub access is
+needed at dependency installation, not at runtime.
 
 Desktop's existing loopback server delivers local files, original remote byte
 ranges and rewritten HLS references with provider headers. Libmedia does its

@@ -3,6 +3,10 @@ import {modernMseMime} from "./mseCodec";
 import {hasHlsHint} from "./hlsSource";
 import { invoke } from "@tauri-apps/api/core";
 import Hls from "hls.js";
+import {prepareMediaSource,releaseMediaSource} from '../../platform/mediaDelivery';
+import type {MediaSourceDescriptor} from '@vega/libmedia-engine/core/media';
+import {platformFetch} from '../../platform/network';
+import {LegacyTextSubtitles} from '../../platform/legacy/LegacyTextSubtitles';
 import type {
   PlayerEngine,
   PlayerEngineOptions,
@@ -219,6 +223,8 @@ function isVideoCodecSupported(codecName?: string, profile?: string, bitDepth?: 
 }
 
 export class HtmlVideoEngine implements PlayerEngine {
+  private legacySource?:MediaSourceDescriptor;
+  private legacySubtitles?:LegacyTextSubtitles;
   private video: HTMLVideoElement;
   private jassub: JassubManager | null = null;
   private hlsInstance: Hls | null = null;
@@ -377,6 +383,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   private async setupSubtitleListener(): Promise<void> {
+    if(import.meta.env.VITE_LEGACY_WEBOS)return;
     try {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen<{
@@ -438,6 +445,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   private async setupStreamInfoListener(): Promise<void> {
+    if(import.meta.env.VITE_LEGACY_WEBOS)return;
     try {
       const { listen } = await import("@tauri-apps/api/event");
       const unlisten = await listen<RemuxStreamInfo>("remux_stream_info", (event) => {
@@ -562,6 +570,10 @@ export class HtmlVideoEngine implements PlayerEngine {
         return;
       }
 
+      if(import.meta.env.VITE_LEGACY_WEBOS){
+        this.legacySubtitles??=new LegacyTextSubtitles(this.video);
+        this.legacySubtitles.setContent(content);this.legacySubtitles.setDelay(this.subtitleDelay);return;
+      }
       this.updateJassubTimeOffset();
       if (
         content &&
@@ -693,7 +705,10 @@ export class HtmlVideoEngine implements PlayerEngine {
   private attachVideoListeners(): void {
     const v = this.video;
     const on = (type: string, handler: () => void) => {
-      v.addEventListener(type, handler, {signal: this.videoEventController.signal});
+      if(import.meta.env.VITE_LEGACY_WEBOS){
+        v.addEventListener(type,handler);
+        this.videoEventController.signal.addEventListener('abort',()=>v.removeEventListener(type,handler),{once:true});
+      }else v.addEventListener(type, handler, {signal: this.videoEventController.signal});
     };
 
     on("play", () => {
@@ -938,6 +953,7 @@ export class HtmlVideoEngine implements PlayerEngine {
    * False when that is not possible or was already tried.
    */
   private tryPlaybackRecovery(reason: string): boolean {
+    if(import.meta.env.VITE_LEGACY_WEBOS)return false;
     if (
       this.hasTriedCodecFallback ||
       this.isCodecFallbackInProgress ||
@@ -1181,6 +1197,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   private async getProxyPort(): Promise<number> {
+    if(import.meta.env.VITE_LEGACY_WEBOS)return Number(location.port);
     if (this.proxyPort) return this.proxyPort;
     const port = await invoke<number>("get_stream_proxy_port");
     this.proxyPort = port;
@@ -1189,6 +1206,22 @@ export class HtmlVideoEngine implements PlayerEngine {
 
   public async load(source: string, options?: PlayerEngineOptions): Promise<void> {
     const currentLoadId = ++this.loadRequestId;
+    if(import.meta.env.VITE_LEGACY_WEBOS){
+      const previous=this.legacySource;this.legacySource=undefined;
+      if(previous)await releaseMediaSource(previous).catch(()=>{});
+      if(this.loadRequestId!==currentLoadId||this.isDestroyed)return;
+      if(isTorrentUrl(source)){
+        const error=new Error('Torrent playback is unavailable on this older webOS version. Choose an HTTP stream.');
+        this.updateState({error:error.message,isBuffering:false,isPaused:true});throw error;
+      }
+      const hls=hasHlsHint(source,options?.streamType,options?.headers||{});
+      if(new URL(source,location.href).origin!==location.origin){
+        const prepared=await prepareMediaSource({id:`legacy-${currentLoadId}`,source,headers:options?.headers,format:hls?'hls':options?.streamType});
+        if(this.loadRequestId!==currentLoadId||this.isDestroyed){await releaseMediaSource(prepared);return;}
+        this.legacySource=prepared;source=String(prepared.source);
+        options={...options,headers:prepared.headers,streamType:hls?'hls':options?.streamType};
+      }
+    }
     this.pendingAutoplay = options?.autoPlay !== false;
     this.hasTriedCodecFallback = false;
     this.isCodecFallbackInProgress = false;
@@ -1206,16 +1239,16 @@ export class HtmlVideoEngine implements PlayerEngine {
     this.video.removeAttribute("src");
     this.video.load();
 
-    if (this.proxyPort && prevSessionId) {
+    if (this.proxyPort && prevSessionId && !import.meta.env.VITE_LEGACY_WEBOS) {
       fetch(
         `http://127.0.0.1:${this.proxyPort}/remux/cancel?session_id=${encodeURIComponent(prevSessionId)}`,
         { keepalive: true },
       ).catch(() => {});
     }
 
-    if (this.currentSource) {
+    if (!import.meta.env.VITE_LEGACY_WEBOS && this.currentSource) {
       invoke("cancel_subtitle_extractions", { source: this.currentSource }).catch(() => {});
-    } else {
+    } else if(!import.meta.env.VITE_LEGACY_WEBOS) {
       invoke("cancel_subtitle_extractions", { source: null }).catch(() => {});
     }
 
@@ -1305,7 +1338,7 @@ export class HtmlVideoEngine implements PlayerEngine {
     }
 
     try {
-      const probeResult = await invoke<MediaProbeResult>("probe_media_info", {
+      const probeResult = import.meta.env.VITE_LEGACY_WEBOS ? null : await invoke<MediaProbeResult>("probe_media_info", {
         source,
         headers: this.currentHeaders,
       }).catch((e) => {
@@ -1483,7 +1516,7 @@ export class HtmlVideoEngine implements PlayerEngine {
           source.toLowerCase().includes("mkv") ||
           (this.currentHeaders["content-disposition"] || "").includes(".mkv");
 
-        this.playbackMode = isMkv ? "remux" : "direct";
+        this.playbackMode = isMkv && !import.meta.env.VITE_LEGACY_WEBOS ? "remux" : "direct";
 
         videoTracks = [
           {
@@ -1925,7 +1958,7 @@ export class HtmlVideoEngine implements PlayerEngine {
     this.updateJassubTimeOffset();
 
     const port = await this.getProxyPort();
-    if (oldSessionId) {
+    if (oldSessionId && !import.meta.env.VITE_LEGACY_WEBOS) {
       fetch(`http://127.0.0.1:${port}/remux/cancel?session_id=${encodeURIComponent(oldSessionId)}`).catch(() => {});
     }
 
@@ -2209,6 +2242,13 @@ export class HtmlVideoEngine implements PlayerEngine {
           return;
         }
 
+        if (import.meta.env.VITE_LEGACY_WEBOS) {
+          if (!vAudioTracks || id < 0 || id >= vAudioTracks.length) {
+            throw new Error('This audio track cannot be selected by the TV media player.');
+          }
+          return;
+        }
+
         if (this.playbackMode === "direct" && id !== this.state.audioTracks[0]?.id) {
           this.playbackMode = "remux";
         }
@@ -2302,8 +2342,10 @@ export class HtmlVideoEngine implements PlayerEngine {
                   }
 
                   try {
-                    const { fetch: tauriFetch } = await import("@tauri-apps/plugin-http");
-                    const response = await tauriFetch(fetchUrl, {
+                    const fetchSubtitle = import.meta.env.VITE_LEGACY_WEBOS
+                      ? platformFetch
+                      : (await import("@tauri-apps/plugin-http")).fetch;
+                    const response = await fetchSubtitle(fetchUrl, {
                       headers: subHeaders,
                     });
                     if (response.ok) {
@@ -2600,6 +2642,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public setAudioDelay(delayMs: number): void {
+    if(import.meta.env.VITE_LEGACY_WEBOS)return;
     if (this.audioDelay === delayMs) return;
     this.audioDelay = delayMs;
     this.updateState({ audioDelay: delayMs });
@@ -2624,6 +2667,7 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public setSubtitleDelay(delayMs: number): void {
+    if(import.meta.env.VITE_LEGACY_WEBOS)this.legacySubtitles?.setDelay(delayMs);
     if (this.subtitleDelay === delayMs) return;
     this.subtitleDelay = delayMs;
     this.updateState({ subtitleDelay: delayMs });
@@ -2631,12 +2675,15 @@ export class HtmlVideoEngine implements PlayerEngine {
   }
 
   public async updateSubtitleSettings(): Promise<void> {
+    if (import.meta.env.VITE_LEGACY_WEBOS) return;
     if (this.jassub) {
       await this.jassub.updateSubtitleSettings();
     }
   }
 
   public destroy(): void {
+    this.legacySubtitles?.destroy();
+    if(this.legacySource){void releaseMediaSource(this.legacySource).catch(()=>{});this.legacySource=undefined;}
     this.pendingAutoplay = false;
     if (this.playbackCheckTimer) clearTimeout(this.playbackCheckTimer);
     this.playbackCheckTimer = null;
@@ -2661,16 +2708,16 @@ export class HtmlVideoEngine implements PlayerEngine {
       this.hlsInstance = null;
     }
 
-    if (this.proxyPort && this.sessionId) {
+    if (this.proxyPort && this.sessionId && !import.meta.env.VITE_LEGACY_WEBOS) {
       fetch(
         `http://127.0.0.1:${this.proxyPort}/remux/cancel?session_id=${encodeURIComponent(this.sessionId)}`,
         { keepalive: true },
       ).catch(() => {});
     }
 
-    if (this.currentSource) {
+    if (this.currentSource && !import.meta.env.VITE_LEGACY_WEBOS) {
       invoke("cancel_subtitle_extractions", { source: this.currentSource }).catch(() => {});
-    } else {
+    } else if (!import.meta.env.VITE_LEGACY_WEBOS) {
       invoke("cancel_subtitle_extractions", { source: null }).catch(() => {});
     }
 

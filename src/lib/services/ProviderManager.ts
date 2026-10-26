@@ -155,10 +155,16 @@ export class ProviderManager {
       return Promise.reject(new Error("Provider module is too large"));
     }
     return runWithProviderSlot(async () => {
-      const engineModule = await getProviderEngine(signal);
+      // Chromium 68 cannot permit WASM compilation on the page independently
+      // of JavaScript eval. Keep the page CSP strict; its trusted classic
+      // worker compiles the sandbox WASM in its own execution context.
+      const engineModule = import.meta.env.VITE_LEGACY_WEBOS ? undefined : await getProviderEngine(signal);
       signal?.throwIfAborted();
       return new Promise<T>((resolve, reject) => {
-        const worker = new Worker(
+        const worker = import.meta.env.VITE_LEGACY_WEBOS ? new Worker(
+          new URL("./providerSandbox.legacy.worker.ts", import.meta.url),
+          { name: `provider-${providerValue}` },
+        ) : new Worker(
           new URL("./providerSandbox.worker.ts", import.meta.url),
           { type: "module", name: `provider-${providerValue}` },
         );
