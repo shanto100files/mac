@@ -36,8 +36,6 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
   lg-webos:
-    permissions:
-      contents: write
     needs: transport-checks
     runs-on: ubuntu-22.04
     env:
@@ -56,15 +54,9 @@ jobs:
           name: vega-lg-webos
           path: dist-tv/webos/*.ipk
           if-no-files-found: error
-      - name: Upload IPK to Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/upload-tv-release.sh webos
   amazon-vega:
     if: inputs.amazon_vega == true || startsWith(github.ref, 'refs/tags/tv-v')
     needs: transport-checks
-    permissions:
-      contents: write
     runs-on: ubuntu-22.04
     timeout-minutes: 60
     env:
@@ -98,7 +90,12 @@ jobs:
           name: vega-amazon-vega
           path: dist-tv/amazon-vega/app/build/**/*.vpkg
           if-no-files-found: error
-      - name: Upload VPKG to Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/upload-tv-release.sh amazon-vega
+  publish:
+    needs: [transport-checks, lg-webos, amazon-vega]
+    if: ${{ !cancelled() && needs.transport-checks.result == 'success' }}
+    permissions:
+      contents: write
+      actions: read
+    uses: ./.github/workflows/publish-tv.yml
+    with:
+      run-id: ${{ github.run_id }}

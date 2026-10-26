@@ -27,27 +27,36 @@ gh() {
 `;
 
 for(const target of ['webos','amazon-vega']) {
-  for(const scenario of ['existing','new','concurrent','retry','upload-failure','missing-package','multiple-variants']) {
+  for(const scenario of ['existing','new','concurrent','retry','upload-failure','missing-package','multiple-variants','source-version','invalid-version',...(target==='amazon-vega'?['sdk-duplicates']:[])]) {
     test(`${target} release upload: ${scenario}`,async()=>{
       const root=await mkdtemp(path.join(tmpdir(),'vega-tv-release-'));
       try {
-        await writeFile(path.join(root,'package.json'),JSON.stringify({version:'2.3.0'}));
+        await writeFile(path.join(root,'package.json'),JSON.stringify({version:scenario==='source-version'?'9.9.9':'2.3.0'}));
         const packages=target==='webos'?['dist-tv/webos/vega.ipk']:[
           'dist-tv/amazon-vega/app/build/release/arm64/vega.vpkg',
         ];
         if(scenario==='multiple-variants') packages.push(target==='webos'
           ?'dist-tv/webos/vega-armv7.ipk'
           :'dist-tv/amazon-vega/app/build/release/armv7/vega.vpkg');
+        if(scenario==='sdk-duplicates') {
+          packages.length=0;
+          for(const arch of ['aarch64','armv7','x86_64']) {
+            packages.push(`dist-tv/amazon-vega/app/build/${arch}-release/vegatv_${arch}.vpkg`);
+            packages.push(`dist-tv/amazon-vega/app/build/private/kepler/vegatv/vega/${arch}/Release/vegatv_${arch}.vpkg`);
+          }
+        }
         if(scenario!=='missing-package') for(const file of packages) {
           await mkdir(path.dirname(path.join(root,file)),{recursive:true});
           await writeFile(path.join(root,file),'package fixture');
         }
         const result=spawnSync(bash,['-e','-o','pipefail','-s','--',target],{
-          cwd:root,env:{...process.env,CASE:scenario,GITHUB_SHA:'source-commit',ORIGINAL_ASSETS:packages.map(file=>path.basename(file)).join('\n')},
+          cwd:root,env:{...process.env,CASE:scenario,GITHUB_SHA:'publisher-commit',
+            TV_RELEASE_VERSION:scenario==='source-version'?'2.3.0':scenario==='invalid-version'?'2.3.0/invalid':'',
+            TV_RELEASE_SOURCE_SHA:'source-commit',ORIGINAL_ASSETS:[...new Set(packages.map(file=>path.basename(file)))].join('\n')},
           input:mock+script,encoding:'utf8',timeout:15_000,
         });
         assert.ifError(result.error);
-        const fails=['upload-failure','missing-package'].includes(scenario);
+        const fails=['upload-failure','missing-package','invalid-version'].includes(scenario);
         assert.equal(result.status,fails?1:0,result.stdout+result.stderr);
         const calls=await readFile(path.join(root,'calls.log'),'utf8').catch(error=>{
           if(error.code==='ENOENT') return ''; throw error;
@@ -55,7 +64,9 @@ for(const target of ['webos','amazon-vega']) {
         if(!fails) {
           assert.ok(calls.includes('release upload app-v2.3.0 '));
           const platform=target==='webos'?'webos':'vegaos',extension=target==='webos'?'ipk':'vpkg';
-          const names=scenario==='multiple-variants'
+          const names=scenario==='sdk-duplicates'
+            ?['arm64','armv7','x64'].map(variant=>`Vega_2.3.0_vegaos_${variant}.vpkg`)
+            :scenario==='multiple-variants'
             ?(target==='webos'?['vega','armv7']:['arm64','armv7']).map(variant=>`Vega_2.3.0_${platform}_${variant}.${extension}`)
             :[`Vega_2.3.0_${platform}.${extension}`];
           for(const name of names) {
@@ -67,11 +78,11 @@ for(const target of ['webos','amazon-vega']) {
           assert.ok(calls.includes('--clobber'));
         }
         if(scenario==='concurrent') assert.equal(calls.split('release view app-v2.3.0').length-1,3);
-        if(scenario==='new') assert.ok(calls.includes('--target source-commit'));
+        if(['new','source-version'].includes(scenario)) assert.ok(calls.includes('--target source-commit'));
         if(scenario==='retry') assert.equal(calls.split('release upload').length-1,2);
         if(scenario==='upload-failure') assert.equal(calls.split('release upload').length-1,6);
         if(fails) assert.ok(!calls.includes('release delete-asset'));
-        if(scenario==='missing-package') assert.equal(calls,'');
+        if(['missing-package','invalid-version'].includes(scenario)) assert.equal(calls,'');
       } finally {await rm(root,{recursive:true,force:true});}
     });
   }

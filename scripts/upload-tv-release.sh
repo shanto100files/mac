@@ -7,12 +7,24 @@ case "${1:-}" in
   amazon-vega) platform=vegaos; extension=vpkg; packages=(dist-tv/amazon-vega/app/build/**/*.vpkg) ;;
   *) echo "Choose webos or amazon-vega" >&2; exit 1 ;;
 esac
+# SDK build/private contains working copies of the final release packages.
+if [ "$1" = amazon-vega ]; then
+  final_packages=()
+  for package in "${packages[@]}"; do
+    if [[ "$package" != */private/* ]]; then final_packages+=("$package"); fi
+  done
+  if [ ${#final_packages[@]} -gt 0 ]; then packages=("${final_packages[@]}"); fi
+fi
 if [ ${#packages[@]} -eq 0 ]; then
   echo "No packages found for $1" >&2
   exit 1
 fi
 
-VERSION=$(node -p "require('./package.json').version")
+VERSION=${TV_RELEASE_VERSION:-$(node -p "require('./package.json').version")}
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.+-]+)?$ ]]; then
+  echo "Invalid release version" >&2
+  exit 1
+fi
 TAG="app-v${VERSION}"
 stage="dist-tv/release-upload/$1"
 mkdir -p "$stage"
@@ -31,16 +43,17 @@ for package in "${packages[@]}"; do
   fi
   name="Vega_${VERSION}_${platform}${suffix}.${extension}"
   if [[ -n "${names[$name]:-}" ]]; then
-    echo "Multiple packages resolve to $name; refusing to overwrite a variant" >&2
+    echo "Multiple packages resolve to $name: ${names[$name]} and $package" >&2
     exit 1
   fi
-  names[$name]=1
+  names[$name]="$package"
+  echo "Stage $package as $name"
   cp -- "$package" "$stage/$name"
   uploads+=("$stage/$name")
 done
 if ! gh release view "$TAG" >/dev/null 2>&1; then
   # Another platform can create the shared release concurrently.
-  gh release create "$TAG" --target "$GITHUB_SHA" \
+  gh release create "$TAG" --target "${TV_RELEASE_SOURCE_SHA:-$GITHUB_SHA}" \
     --title "Vega v${VERSION}" --notes "Automated release of Vega." --draft \
     || gh release view "$TAG" >/dev/null
 fi

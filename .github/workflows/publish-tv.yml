@@ -1,0 +1,76 @@
+name: Publish TV packages
+on:
+  workflow_call:
+    inputs:
+      run-id:
+        description: TV apps run containing the built packages
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      run-id:
+        description: TV apps run containing the built packages
+        required: true
+        type: string
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [webos, amazon-vega]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify source build and artifact
+        id: source
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.run-id }}
+          PLATFORM: ${{ matrix.platform }}
+        with:
+          script: |
+            const {owner,repo}=context.repo;
+            const run_id=Number(process.env.SOURCE_RUN);
+            if(!Number.isSafeInteger(run_id)||run_id<=0) throw new Error('Invalid source run');
+            const {data:run}=await github.rest.actions.getWorkflowRun({owner,repo,run_id});
+            if(run.head_repository?.full_name!==`${owner}/${repo}` ||
+               !run.path.startsWith('.github/workflows/tv.yml') ||
+               !['push','workflow_dispatch'].includes(run.event)) throw new Error('Source must be this repository’s TV apps workflow');
+            const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRun,{owner,repo,run_id});
+            if(!jobs.some(job=>job.name==='transport-checks'&&job.conclusion==='success')) throw new Error('Source build checks did not pass');
+            const platform=process.env.PLATFORM;
+            const build=jobs.find(job=>job.name===(platform==='webos'?'lg-webos':'amazon-vega'));
+            const built=build?.steps?.some(step=>step.name===`Run npm run package:${platform}`&&step.conclusion==='success');
+            const name=platform==='webos'?'vega-lg-webos':'vega-amazon-vega';
+            const artifacts=await github.paginate(github.rest.actions.listWorkflowRunArtifacts,{owner,repo,run_id});
+            if(!built||!artifacts.some(item=>item.name===name&&!item.expired)) {
+              core.setOutput('available','false'); return;
+            }
+            const {data:file}=await github.rest.repos.getContent({owner,repo,path:'package.json',ref:run.head_sha});
+            const version=JSON.parse(Buffer.from(file.content,'base64').toString('utf8')).version;
+            if(!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.+-]+)?$/.test(version)) throw new Error('Invalid source version');
+            core.setOutput('available','true'); core.setOutput('artifact',name);
+            core.setOutput('version',version); core.setOutput('sha',run.head_sha);
+      - uses: actions/download-artifact@v4
+        if: steps.source.outputs.available == 'true'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.run-id }}
+          name: ${{ steps.source.outputs.artifact }}
+          path: ${{ matrix.platform == 'webos' && 'dist-tv/webos' || 'dist-tv/amazon-vega/app/build' }}
+      - name: Publish built packages to versioned release
+        if: steps.source.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TV_RELEASE_VERSION: ${{ steps.source.outputs.version }}
+          TV_RELEASE_SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          PLATFORM: ${{ matrix.platform }}
+        run: bash scripts/upload-tv-release.sh "$PLATFORM"
