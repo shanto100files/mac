@@ -41,14 +41,18 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: tvHost ? './' : '/',
-    plugins: [react(), tailwindcss(), libmediaChunkPlugin(), ...(legacyWebos ? [legacyWebosPlugin()] : []), {
+    plugins: [react(), tailwindcss(), libmediaChunkPlugin(), ...(legacyWebos ? [legacyWebosPlugin()] : tvHost==='webos' ? [legacyWebosPlugin({chrome:94,lowerSandbox:false})] : []), {
       name:'production-script-policy', apply:'build',
       transformIndexHtml: {order:'post', handler(html) {
         const hashes = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
           .filter(match => !/\bsrc\s*=/.test(match[1])).map(match => `'sha256-${createHash('sha256').update(match[2].replace(/\r\n?/g,'\n')).digest('base64')}'`);
         // Libmedia's worker bootstrap imports generated blob scripts. worker-src
         // permits creating the worker; script-src also governs its imports.
-        const policy = ["default-src 'self'", `script-src 'self' 'wasm-unsafe-eval' blob: ${hashes.join(' ')}`,
+        // User-approved exception for the packaged webOS app: Chromium 94
+        // predates wasm-unsafe-eval and requires unsafe-eval to compile WASM.
+        // Browser, desktop and Amazon builds retain the WASM-only permission.
+        const wasmPermission = tvHost === 'webos' ? "'unsafe-eval'" : "'wasm-unsafe-eval'";
+        const policy = ["default-src 'self'", `script-src 'self' ${wasmPermission} blob: ${hashes.join(' ')}`,
           "style-src 'self' 'unsafe-inline'", "connect-src 'self' https: http: wss: blob: data: ipc: asset: tauri:",
           "img-src 'self' https: http: data: blob: asset:", "media-src 'self' https: http: blob: data: asset:",
           "font-src 'self' data:", "worker-src 'self' blob:", "frame-src 'none'", "object-src 'none'", "base-uri 'none'", "form-action 'none'"].join('; ');
@@ -58,6 +62,7 @@ export default defineConfig(({ mode }) => {
     optimizeDeps: {exclude:["@libmedia/avplayer"], include:['quickjs-emscripten', '@jitl/quickjs-singlefile-browser-release-sync', '@jitl/quickjs-wasmfile-release-sync', 'ipaddr.js']},
     define: {
       'import.meta.env.VITE_LEGACY_WEBOS': JSON.stringify(legacyWebos),
+      'import.meta.env.VITE_WEBOS_COMPAT': JSON.stringify(tvHost==='webos'),
       'import.meta.env.VITE_TV_HOST': JSON.stringify(tvHost),
       ...(tvHost ? {'import.meta.env.VITE_TV_MODE': JSON.stringify('true')} : {}),
       "import.meta.env.VITE_TMDB_API_KEY": JSON.stringify(tmdbApiKey),
@@ -88,7 +93,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: legacyWebos ? 'dist-tv/webos-legacy/ui' : tvHost ? `dist-tv/${tvHost}/ui` : webBuild ? "dist-web" : "dist",
       target:
-        legacyWebos ? 'chrome68' : webBuild ? "es2022" : process.env.TAURI_ENV_PLATFORM === "windows"
+        legacyWebos ? 'chrome68' : tvHost==='webos' ? 'chrome94' : webBuild ? "es2022" : process.env.TAURI_ENV_PLATFORM === "windows"
           ? "chrome105"
           : "safari13",
       sourcemap: !!process.env.TAURI_ENV_DEBUG,

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import {readFile} from 'node:fs/promises';
 import {createRequire} from 'node:module';
-import {legacyCss,legacySandboxWasm} from '../scripts/legacy-webos.mjs';
+import {legacyCss,legacySandboxWasm,lowerLibmediaChunk} from '../scripts/legacy-webos.mjs';
 import {newQuickJSWASMModuleFromVariant,newVariant} from 'quickjs-emscripten';
 import variant from '@jitl/quickjs-wasmfile-release-sync';
 import ts from 'typescript';
@@ -45,22 +45,25 @@ test('lowered current QuickJS retains execution and memory limits',async()=>{
   }finally{context.dispose();runtime.dispose();}
 });
 
-test('legacy subtitle replacement, delay and cleanup handle disabled Chromium tracks',async()=>{
-  const source=await readFile(new URL('../src/platform/legacy/LegacyTextSubtitles.ts',import.meta.url),'utf8');
-  const {LegacyTextSubtitles}=await import(`data:text/javascript;base64,${Buffer.from(ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText).toString('base64')}`);
-  const previous=globalThis.VTTCue;
-  globalThis.VTTCue=class{constructor(start,end,text){this.startTime=start;this.endTime=end;this.text=text;}};
-  const stored=[];
-  const track={mode:'disabled',get cues(){return this.mode==='disabled'?null:stored;},addCue(cue){stored.push(cue);},removeCue(cue){stored.splice(stored.indexOf(cue),1);}};
-  try{
-    const subtitles=new LegacyTextSubtitles({addTextTrack:()=>track});
-    subtitles.setContent('1\n00:00:01,000 --> 00:00:04,000\n{\\an8}Text');
-    subtitles.setDelay(2000);subtitles.setDelay(2000);
-    assert.deepEqual(stored.map(cue=>[cue.startTime,cue.endTime,cue.text]),[[3,6,'Text']]);
-    subtitles.setContent('WEBVTT\n\n00:05.000 --> 00:07.000\nReplacement');
-    assert.equal(stored.length,1);assert.equal(stored[0].startTime,7);
-    assert.throws(()=>subtitles.setContent('[Script Info]\nDialogue: unsupported'),/Choose SRT/);
-    assert.equal(stored.length,0);
-    subtitles.destroy();assert.equal(stored.length,0);assert.equal(track.mode,'disabled');
-  }finally{globalThis.VTTCue=previous;}
+test('missing WASM globals are reported before libmedia import without substituting an engine',async()=>{
+  const source=await readFile(new URL('../src/lib/player/libmediaRuntime.ts',import.meta.url),'utf8');
+  const js=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
+  const {getLibmediaRuntimeError}=await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+  assert.match(getLibmediaRuntimeError({}),/WebAssembly.Global/);
+  assert.match(getLibmediaRuntimeError({}),/no alternative player/);
+  assert.equal(getLibmediaRuntimeError(WebAssembly),null);
+});
+
+test('webOS 23 CSS lowers layers/colors while retaining supported layout features',async()=>{
+  const css=await legacyCss('@layer base{*{padding:0}}.player{padding:20px;display:flex;gap:12px;width:clamp(10px,50vw,100px);aspect-ratio:16/9;background:color-mix(in srgb,var(--primary) 50%,transparent)}',{chrome:94});
+  assert.doesNotMatch(css,/@layer|color-mix\(/);
+  assert.match(css,/clamp\(/);
+  assert.match(css,/aspect-ratio:16\/9/);
+  assert.doesNotMatch(css,/--fgp-/);
+});
+
+test('separately loaded libmedia chunks retain behavior after Chrome 94 lowering',async()=>{
+  const code=await lowerLibmediaChunk('globalThis.result = [1,2].map(value => value + 1);',94);
+  const context=vm.createContext({});vm.runInContext(code,context);
+  assert.equal(vm.runInContext('JSON.stringify(result)',context),'[2,3]');
 });

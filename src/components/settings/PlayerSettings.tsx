@@ -121,7 +121,7 @@ export const PlayerSettings: React.FC = () => {
 
       <div className="settings-divider" />
 
-      {!import.meta.env.VITE_LEGACY_WEBOS && (
+      {!import.meta.env.VITE_TV_HOST && (
         <>
           {/* Playback engines share the desktop controls. */}
           <div className="settings-row">

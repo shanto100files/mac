@@ -44,12 +44,57 @@ Activity Manager activity while the foreground app sends heartbeats; it closes
 after 90 seconds without activity. Resume after service eviction currently
 requires reopening the app.
 
-Initial compatibility target is **webOS TV 25+**, whose Chromium 120+ engine
-matches the shared frontend's modern CSS requirements. The service requires
-Node 16+. Older TVs need a separate compatibility pass, not just a changed label.
+The standard webOS build now targets **webOS TV 23+**: Chromium 94 frontend and
+Node 12 service. CSS layers and unsupported color syntax are lowered in the webOS
+bundle; supported layout features are retained. Browser polyfills load before the
+app and inside provider/libmedia workers. Libmedia's copied lazy JavaScript chunks
+also pass through the Chromium 94 syntax target. The Node service includes a
+conditional cancellation shim. Desktop, browser and Amazon build targets are
+unchanged. This changes the compatibility target, not a claim of real-TV playback
+certification or guaranteed codecs/performance.
+
+The TV builds select libmedia exclusively, including when it reports an error.
+They do not switch to the desktop HTML/FFmpeg engine. No codec/WASM binaries,
+decoder-selection logic or provider defaults are changed by this compatibility pass.
+
+The user-approved CSP exception is scoped to packaged webOS builds: `script-src`
+includes `unsafe-eval` because Chromium 94 predates the narrower `wasm-unsafe-eval`
+permission. This also permits JavaScript eval in that package; providers still run
+in isolated QuickJS workers. Desktop, web and Amazon builds retain their existing
+WASM-only permission. Destination checks, authenticated loopback transport and
+network/header restrictions remain unchanged.
+
+Validation uses the production CSP and generated bundle in Chromium 94.0.4595.0:
+startup/polyfills, empty provider setup, isolated provider execution, H.264/AAC MKV
+playback, embedded subtitle display, audio-track selection, HTTP range seeking and
+player cleanup. The service was checked under Node 12.22.2 for startup, repeated
+requests and blocked private destinations. These checks do not establish real-TV
+hardware codec coverage, 4K performance or suspend/resume behavior.
+
+`npm run test:webos:compat` runs the production browser check (requires Playwright
+and FFmpeg for a generated, non-bundled test fixture). Set `VEGA_WEBOS_BROWSER` to
+an older Chromium executable and `VEGA_WEBOS_CHROME_MAJOR=94` to enforce the exact
+runtime. `VEGA_TEST_ROOT` selects where temporary test assets are written.
 `requiredACG` declares `activity.operation` for Activity Manager calls on webOS
 versions that enforce ACG. Luna registration, background/resume and hardware
 decoding must still be verified on a real TV; Chrome tests do not cover these.
+
+### Legacy webOS compatibility work
+
+`npm run package:webos:legacy` builds the Chromium 68 / Node 8 UI and service
+compatibility target under `dist-tv/webos-legacy`. It uses libmedia exclusively.
+It must not substitute the HTML player when libmedia cannot initialize.
+
+The webOS 5.0 emulator lacks `WebAssembly.Global`. Libmedia's baseline WASM
+requires mutable globals, so playback on that runtime is currently unsupported.
+The player reports that incompatibility explicitly. The earlier MP4/HLS tests
+used the HTML player and do **not** demonstrate libmedia or MKV compatibility;
+that fallback has been removed. UI/polyfill/provider-worker checks remain useful,
+but this target is not a working playback release for webOS 5.x.
+
+See [libmedia's upstream requirements](https://github.com/zhaohappy/libmedia/blob/master/README_en.md#codecs).
+Supporting the old runtime with libmedia requires further upstream/runtime work;
+JavaScript/CSS transpilation alone does not supply its missing WASM features.
 
 ### Amazon Vega OS
 

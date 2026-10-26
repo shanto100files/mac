@@ -1,4 +1,4 @@
-// webOS 24+ (Node 16). This module also runs on the CI host for transport tests.
+// Compiled for Node 12 in webOS 23+ packages; cancellation is shimmed at startup.
 const http = require('http'), https = require('https'), dns = require('dns');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const MAX = 8 * 1024 * 1024;

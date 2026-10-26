@@ -26,6 +26,12 @@ if (typeof AbortSignal !== 'undefined' && !AbortSignal.prototype.throwIfAborted)
 // CSS aspect-ratio is unavailable on Chromium 68. Resize only elements whose
 // legacy stylesheet declares a ratio; their child images retain object-fit.
 if (typeof document !== 'undefined') {
+  // Libmedia's demux/decode workers need these APIs too (for example, MKV
+  // metadata parsing uses String.replaceAll, unavailable in Chromium 79).
+  // Its upstream thread bootstrap propagates/imports CHEAP_POLYFILL_URL.
+  (globalThis as typeof globalThis & {CHEAP_POLYFILL_URL?:string}).CHEAP_POLYFILL_URL =
+    new URL('legacy-polyfills.js', document.baseURI).href;
+  if(!CSS.supports('aspect-ratio','16 / 9')) {
   const start=()=>{
     const seen=new WeakSet<Element>();
     const observer=new ResizeObserver(entries=>{
@@ -51,4 +57,5 @@ if (typeof document !== 'undefined') {
     scan(document.body);
   };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});else start();
+  }
 }

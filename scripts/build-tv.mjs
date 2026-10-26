@@ -1,4 +1,4 @@
-import {build} from 'vite';
+import {build,transformWithOxc} from 'vite';
 import {spawnSync} from 'node:child_process';
 import {cp, mkdir, readFile, writeFile, access, rm} from 'node:fs/promises';
 import path from 'node:path';
@@ -31,15 +31,18 @@ if (target === 'webos' || legacy) {
   const service = path.join(out,'service');
   await cp(path.join(root,'tv/webos/service'),service,{recursive:true});
   await cp(path.join(out,'ui'),path.join(service,'ui'),{recursive:true});
-  await build({root,configFile:false,publicDir:false,logLevel:'warn',build:{target:legacy?'node8':'node16',outDir:service,emptyOutDir:false,
+  const serviceTarget=legacy?'node8':'node12';
+  await build({root,configFile:false,publicDir:false,logLevel:'warn',build:{target:serviceTarget,outDir:service,emptyOutDir:false,
     lib:{entry:path.join(root,'src/platform/publicNetworkPolicy.ts'),formats:['cjs'],fileName:()=> 'networkPolicy.cjs'}}});
-  if(legacy){
+  {
     await build({root,configFile:false,publicDir:false,logLevel:'warn',plugins:[{
       name:'legacy-policy-location',renderChunk(code){return code.replace(/require\((['"])[^'"]*networkPolicy\.cjs\1\)/g,'require("./networkPolicy.cjs")');},
-    }],build:{target:'node8',outDir:service,emptyOutDir:false,
+    }],build:{target:serviceTarget,outDir:service,emptyOutDir:false,
       rolldownOptions:{external:['webos-service','./networkPolicy.cjs',...builtinModules]},
       lib:{entry:path.join(root,'tv/webos/legacy/service.cjs'),formats:['cjs'],fileName:()=> 'service.cjs'}}});
   }
+  const hostFile=path.join(service,'host.cjs');
+  await writeFile(hostFile,(await transformWithOxc(await readFile(hostFile,'utf8'),'host.cjs',{target:serviceTarget,sourcemap:false})).code);
   const pkg=JSON.parse(await readFile(path.join(root,'package.json'),'utf8'));
   const info=JSON.parse(await readFile(path.join(out,'app/appinfo.json'),'utf8'));info.version=pkg.version;
   await writeFile(path.join(out,'app/appinfo.json'),JSON.stringify(info,null,2));

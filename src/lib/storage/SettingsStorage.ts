@@ -540,7 +540,7 @@ export class SettingsStorage {
    * "mpv": libmpv rendered under the transparent webview (Windows only).
    */
   getPlayerEngine(): PlayerEngineKind {
-    if(import.meta.env.VITE_LEGACY_WEBOS)return 'builtin';
+    if(import.meta.env.VITE_LEGACY_WEBOS)return 'libmedia';
     if (!isTauriRuntime()) return "libmedia";
     const saved = mainStorage.getString(SettingsKeys.PLAYER_ENGINE);
     if (saved === "libmedia") return "libmedia";

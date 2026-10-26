@@ -1,4 +1,4 @@
-// Loaded only by the legacy webOS service, before its shared implementation.
+// Conditional startup shims for Node 12 webOS packages and older diagnostics.
 const util = require('util');
 const fs = require('fs');
 const dns = require('dns');

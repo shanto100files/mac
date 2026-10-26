@@ -4,6 +4,7 @@ import {isTauriRuntime} from "../../platform/host";
 import type {LibmediaPlayerAdapter} from "../player/LibmediaPlayerAdapter";
 import type {PlayerEngine} from "../player/PlayerEngine";
 import { HtmlVideoEngine } from "../player/HtmlVideoEngine";
+import {getLibmediaRuntimeError} from '../player/libmediaRuntime';
 import type { PlayerEngineState } from "../player/PlayerEngine";
 
 export interface UsePlayerEngineOptions {
@@ -22,18 +23,25 @@ type VideoRefType =
 export function usePlayerEngine(
   videoRef?: VideoRefType,
   opts?: UsePlayerEngineOptions,
-  engineKind: "builtin" | "libmedia" = "builtin",
+  requestedEngineKind: "builtin" | "libmedia" = "builtin",
 ) {
+  const engineKind = import.meta.env.VITE_TV_HOST ? 'libmedia' : requestedEngineKind;
+  const runtimeError = engineKind === 'libmedia' ? getLibmediaRuntimeError() : null;
   const libmediaAdapterRef=useRef<typeof LibmediaPlayerAdapter|null>(null);
   const [libmediaReady,setLibmediaReady]=useState(false);
   useEffect(()=>{
     if(engineKind!=="libmedia")return;
+    if(runtimeError){
+      setInitError(runtimeError);
+      setEngineState(previous=>({...previous,error:runtimeError,isBuffering:false,isPaused:true}));
+      return;
+    }
     let active=true;
     void import('../player/LibmediaPlayerAdapter').then(module=>{
       if(active){libmediaAdapterRef.current=module.LibmediaPlayerAdapter;setLibmediaReady(true);}
     }).catch(error=>{if(active)setInitError(error?.message||'Libmedia is unavailable on this device');});
     return ()=>{active=false;};
-  },[engineKind]);
+  },[engineKind,runtimeError]);
   const [engineState, setEngineState] = useState<PlayerEngineState>({
     isInitialized: true,
     isPaused: true,
@@ -256,6 +264,7 @@ export function usePlayerEngine(
       streamType?: string,
       localBaseDir?: string,
     ) => {
+      if (runtimeError) return;
       thumbnailSourceRef.current = { source, headers };
       let engine = engineRef.current;
       if (!engine) {
@@ -297,7 +306,7 @@ export function usePlayerEngine(
         }
       }
     },
-    [resolveVideoElement, setupEngine],
+    [resolveVideoElement, setupEngine, runtimeError],
   );
 
   const togglePause = useCallback(async () => {
@@ -426,8 +435,8 @@ export function usePlayerEngine(
   }, []);
 
   return {
-    isInitialized: engineState.isInitialized && !initError,
-    initializationError: initError,
+    isInitialized: engineState.isInitialized && !initError && !runtimeError,
+    initializationError: runtimeError || initError,
     playbackError: engineState.error,
     error: engineState.error,
     isPaused: engineState.isPaused,
@@ -459,6 +468,7 @@ export function usePlayerEngine(
     setSubtitleDelay,
     updateSubtitleSettings,
     initPlayer: async () => {
+      if (runtimeError) return;
       setInitError(null);
       setEngineState((prev) => ({ ...prev, isInitialized: true }));
       const el = resolveVideoElement();

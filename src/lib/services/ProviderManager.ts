@@ -158,10 +158,10 @@ export class ProviderManager {
       // Chromium 68 cannot permit WASM compilation on the page independently
       // of JavaScript eval. Keep the page CSP strict; its trusted classic
       // worker compiles the sandbox WASM in its own execution context.
-      const engineModule = import.meta.env.VITE_LEGACY_WEBOS ? undefined : await getProviderEngine(signal);
+      const engineModule = import.meta.env.VITE_WEBOS_COMPAT ? undefined : await getProviderEngine(signal);
       signal?.throwIfAborted();
       return new Promise<T>((resolve, reject) => {
-        const worker = import.meta.env.VITE_LEGACY_WEBOS ? new Worker(
+      const worker = import.meta.env.VITE_WEBOS_COMPAT ? new Worker(
           new URL("./providerSandbox.legacy.worker.ts", import.meta.url),
           { name: `provider-${providerValue}` },
         ) : new Worker(
