@@ -74,7 +74,7 @@ export const Sidebar: React.FC = () => {
   const location = useLocation();
   const tvMode = settingsStorage.isTvModeEnabled();
   const [collapsed, setCollapsed] = React.useState(() =>
-    localStorage.getItem("vegaSidebarCollapsed") === "true",
+    localStorage.getItem("vegaSidebarCollapsed") !== "false",
   );
   const { ref, focusKey } = useFocusable({
     focusable: tvMode,

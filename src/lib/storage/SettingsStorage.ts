@@ -114,7 +114,7 @@ export class SettingsStorage {
 
   // Theme settings
   getPrimaryColor(): string {
-    return mainStorage.getString(SettingsKeys.PRIMARY_COLOR) || "#FF6347";
+    return mainStorage.getString(SettingsKeys.PRIMARY_COLOR) || "#FFFFFF";
   }
 
   setPrimaryColor(color: string): void {
