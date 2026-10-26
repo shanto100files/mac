@@ -46,8 +46,8 @@ test('production web build boots and serves shared routes without native APIs', 
   await page.goto('/downloads');
   await expect(page).toHaveURL(/\/watchlist$/);
   await page.goto('/extensions');
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.getByRole('dialog').getByRole('button', {name: 'Close', exact: true}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
   await expect(page.getByRole('heading', {name: 'No providers available'})).toBeVisible();
   expect(errors).toEqual([]);
 });

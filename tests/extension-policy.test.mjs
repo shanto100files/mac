@@ -5,8 +5,8 @@ import {APP_MATCHES, appOrigin} from '../browser-extension/app-policy.mjs';
 import {readFileSync} from 'node:fs';
 
 test('automatic bridge activation is restricted to Vega and local development pages', () => {
-  for (const url of ['https://vega-app.in/', 'https://vega-app.in/watch?next=https://other.example', 'http://localhost:5173/', 'https://localhost:4443/', 'http://127.0.0.1:1427/']) assert.equal(appOrigin(url), new URL(url).origin);
-  for (const url of ['https://other.example/', 'https://vega-app.in.evil.example/', 'https://evilvega-app.in/', 'https://localhost.evil.example/', 'https://sub.vega-app.in/', 'http://vega-app.in/', 'https://vega-app.in:8443/', 'file:///vega-app.in', 'https://vega-app.in@evil.example/']) assert.equal(appOrigin(url), undefined, url);
+  for (const url of ['https://web.vega-app.in/', 'https://web.vega-app.in/settings', 'https://vega-app.in/', 'https://vega-app.in/watch?next=https://other.example', 'http://localhost:5173/', 'https://localhost:4443/', 'http://127.0.0.1:1427/']) assert.equal(appOrigin(url), new URL(url).origin);
+  for (const url of ['https://web.vega-app.in.evil.example/', 'https://sub.web.vega-app.in/', 'http://web.vega-app.in/', 'https://web.vega-app.in:8443/', 'https://other.example/', 'https://vega-app.in.evil.example/', 'https://evilvega-app.in/', 'https://localhost.evil.example/', 'https://sub.vega-app.in/', 'http://vega-app.in/', 'https://vega-app.in:8443/', 'file:///vega-app.in', 'https://vega-app.in@evil.example/']) assert.equal(appOrigin(url), undefined, url);
   const manifest = JSON.parse(readFileSync(new URL('../browser-extension/manifest.json', import.meta.url)));
   for (const script of manifest.content_scripts) {assert.deepEqual(script.matches, APP_MATCHES); assert.equal(script.all_frames, false);}
   assert.equal(manifest.permissions.includes('activeTab'), false);

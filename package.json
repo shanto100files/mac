@@ -10,6 +10,7 @@
     "build:web": "node scripts/setup-libmedia.mjs && node scripts/setup-provider-sandbox.mjs && tsc && vite build --mode web",
     "build:extension": "node scripts/setup-browser-host.mjs && powershell -NoProfile -File scripts/package-browser-extension.ps1",
     "preview:web": "vite preview --mode web",
+    "deploy:web": "npm run build:web && wrangler deploy --config wrangler.jsonc",
     "test:web": "npm run build:web && playwright test --config playwright.web.config.mjs",
     "test:extension": "node scripts/setup-browser-host.mjs && node --test tests/extension-policy.test.mjs tests/extension-access.test.mjs tests/verification-host.test.mjs && playwright test --config playwright.extension.config.mjs",
     "preview": "vite preview",
@@ -82,6 +83,7 @@
     "@vitejs/plugin-react": "^6.0.2",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16"
+    "vite": "^8.0.16",
+    "wrangler": "4.80.0"
   }
 }

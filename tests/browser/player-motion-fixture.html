@@ -1,0 +1,26 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body><div id="root"></div>
+<script type="module">
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {init} from '@noriginmedia/norigin-spatial-navigation-core';
+import {PlayerControls} from '../../src/pages/PlayerControls.tsx';
+import {useExitPresence} from '../../src/lib/hooks/useExitPresence.ts';
+import '../../src/styles/index.css';
+import '../../src/pages/PlayerPage.css';
+localStorage.setItem('tvModeEnabled','false');init();
+const noop=()=>{};
+function Fixture(){
+ const [visible,setVisible]=React.useState(true),[open,setOpen]=React.useState(false);
+ const present=useExitPresence(open,300);
+ window.playerMotion={setVisible,setOpen};
+ return React.createElement('div',{className:'player-page'},
+  React.createElement(PlayerControls,{visible,isPaused:true,isBuffering:false,currentTime:100,duration:3600,
+   primaryTitle:'Player animation test',showNextEpisode:false,isFullscreen:false,isPip:false,isCropped:false,
+   audioTracks:[],subtitleTracks:[],playbackRate:1,onSeek:noop,onBack:noop,onTogglePause:noop,
+   onToggleFullscreen:noop,onClickBackground:noop,onSelectAudioTrack:noop,onSelectSubtitleTrack:noop,
+   onSelectVideoTrack:noop,onPlaybackRateChange:noop,onTogglePip:noop,onToggleCrop:noop}),
+  React.createElement('div',{className:`player-episode-sidebar-backdrop ${open?'visible':present?'exiting':''}`}),
+  React.createElement('aside',{className:`player-episode-sidebar ${open?'open':present?'exiting':''}`},'Episodes'));
+}
+createRoot(document.getElementById('root')).render(React.createElement(Fixture));
+</script></body></html>

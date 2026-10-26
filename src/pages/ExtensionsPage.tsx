@@ -18,6 +18,7 @@ import {
 import { ProviderSettingsDialog } from "../components/settings/ProviderSettingsDialog";
 import { SourcePickerDialog } from "../components/extensions/SourcePickerDialog";
 import { AddSourceDialog } from "../components/extensions/AddSourceDialog";
+import {BrowserExtensionPrompt, browserExtensionRequired, useBrowserExtensionRequired} from '../components/extensions/BrowserExtensionPrompt';
 import { ConfirmActionDialog } from "../components/extensions/ConfirmActionDialog";
 import { FocusableButton } from "../components/layout/FocusableButton";
 import { extensionManager } from "../lib/services/ExtensionManager";
@@ -110,6 +111,9 @@ export const ExtensionsPage: React.FC = () => {
     | null;
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [showAddSource, setShowAddSource] = useState(false);
+  const extensionMissing = useBrowserExtensionRequired();
+  const [showExtensionPrompt, setShowExtensionPrompt] = useState(false);
+  useEffect(() => {if (!extensionMissing) setShowExtensionPrompt(false);}, [extensionMissing]);
   const [refreshing, setRefreshing] = useState(false);
   const [operationKey, setOperationKey] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -128,6 +132,7 @@ export const ExtensionsPage: React.FC = () => {
   const isAnyDialogOpen = Boolean(
     showSourcePicker ||
     showAddSource ||
+    showExtensionPrompt ||
     sourceToRemove ||
     providerToRemove ||
     settingsProvider
@@ -222,7 +227,7 @@ export const ExtensionsPage: React.FC = () => {
       if (cached.length === 0) {
         void refreshManifest(nextActive);
       }
-    } else {
+    } else if (!browserExtensionRequired()) {
       setShowAddSource(true);
     }
   };
@@ -288,6 +293,7 @@ export const ExtensionsPage: React.FC = () => {
   }, [availableProviders, installedProviders]);
 
   const handleAddSource = () => {
+    if (browserExtensionRequired()) {setShowExtensionPrompt(true); return;}
     if (!inputValue.trim()) {
       setError("Enter a GitHub author, a repo URL or an HTTP or HTTPS manifest URL.");
       return;
@@ -374,6 +380,7 @@ export const ExtensionsPage: React.FC = () => {
   };
 
   const handleInstall = async (provider: ProviderExtension) => {
+    if (browserExtensionRequired()) {setShowExtensionPrompt(true); return;}
     const key = providerKey(provider);
     try {
       setOperationKey(key);
@@ -776,7 +783,7 @@ export const ExtensionsPage: React.FC = () => {
       />
 
       <AddSourceDialog
-        open={showAddSource}
+        open={showAddSource && !extensionMissing}
         onOpenChange={(open) => {
           if (!open) handleCloseAddSource();
           else setShowAddSource(true);
@@ -791,6 +798,9 @@ export const ExtensionsPage: React.FC = () => {
         onAddSource={handleAddSource}
         canCancel={sources.length > 0}
       />
+
+      <BrowserExtensionPrompt open={extensionMissing && (showAddSource || showExtensionPrompt)}
+        onOpenChange={open => {if (!open) {setShowExtensionPrompt(false); handleCloseAddSource();}}} />
 
       <ConfirmActionDialog
         open={Boolean(sourceToRemove)}

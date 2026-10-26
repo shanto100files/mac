@@ -4,6 +4,7 @@ import { LuCaptions as Subtitles, LuMinus as Minus, LuPlus as Plus, LuCheck as C
 import { FocusableButton } from "../layout/FocusableButton";
 import { settingsStorage } from "../../lib/storage";
 import type { MpvTrack } from "../../lib/player/PlayerEngine";
+import {trackLanguage} from '../../lib/player/trackLanguage';
 
 interface SubtitleTrackMenuProps {
   subtitleTracks: MpvTrack[];
@@ -180,26 +181,11 @@ export const SubtitleTrackMenu: React.FC<SubtitleTrackMenuProps> = ({
         </FocusableButton>
 
         {subtitleTracks.map((t, subIdx) => {
-          const isDuplicateLang = Boolean(
-            t.lang &&
-            t.lang !== "und" &&
-            t.lang !== "ext" &&
-            subtitleTracks.filter((x) => (x.lang || "").toLowerCase() === t.lang.toLowerCase()).length > 1
-          );
-
-          const mainLabel =
-            t.lang && t.lang !== "und" && t.lang !== "ext"
-              ? `${t.lang.toUpperCase()}${isDuplicateLang ? ` #${subIdx + 1}` : ""}`
-              : t.title || `Subtitle ${subIdx + 1}`;
-
-          const secondaryLabel =
-            t.title &&
-              t.lang &&
-              t.lang !== "und" &&
-              t.lang !== "ext" &&
-              t.title.toLowerCase() !== t.lang.toLowerCase()
-              ? t.title
-              : "";
+          const language = trackLanguage(t.lang);
+          const sameLanguage = subtitleTracks.filter(track => trackLanguage(track.lang) === language);
+          const number = sameLanguage.findIndex(track => track.id === t.id) + 1;
+          const mainLabel = `${language}${sameLanguage.length > 1 ? ` #${number}` : ''}`;
+          const secondaryLabel = t.title && ![language.toLowerCase(), t.lang?.toLowerCase()].includes(t.title.toLowerCase()) ? t.title : '';
 
           return (
             <FocusableButton

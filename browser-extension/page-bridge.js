@@ -1,5 +1,5 @@
 (() => {
-  if (!(location.origin === 'https://vega-app.in' || ['http:', 'https:'].includes(location.protocol) && ['localhost', '127.0.0.1'].includes(location.hostname))) return;
+  if (!(['https://vega-app.in', 'https://web.vega-app.in'].includes(location.origin) || ['http:', 'https:'].includes(location.protocol) && ['localhost', '127.0.0.1'].includes(location.hostname))) return;
   if (window !== window.top || window.__vegaBrowserBridge) return;
   window.__vegaBrowserBridge = true;
   const pending = new Map(), resources = new Map();

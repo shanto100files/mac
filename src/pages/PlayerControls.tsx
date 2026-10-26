@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import {isTauriRuntime} from "../platform/host";
+import {useExitPresence} from '../lib/hooks/useExitPresence';
 import {pickBrowserFile} from "../platform/browserFiles";
 import {
   useFocusable,
@@ -211,6 +212,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     typeof navigator !== "undefined" &&
     navigator.userAgent.toLowerCase().includes("android");
   const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const controlsPresent = useExitPresence(visible, 250);
 
   const { ref: containerRef, focusKey, focusSelf } = useFocusable({
     trackChildren: true,
@@ -633,7 +635,9 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       <FocusContext.Provider value={focusKey}>
         <div
           ref={containerRef}
-        className={`player-controls-wrapper ${visible ? "visible" : ""}`}
+        className={`player-controls-wrapper ${visible ? "visible" : controlsPresent ? "exiting" : ""}`}
+        aria-hidden={!visible}
+        inert={!visible}
         onClick={onClickBackground}
         onDoubleClick={onToggleFullscreen}
       >

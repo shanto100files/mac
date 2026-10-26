@@ -18,7 +18,7 @@ async function update() {
     document.body.dataset.state = access && result?.active ? 'active' : 'inactive';
     status.textContent = access && result?.active ? 'Active' : 'Inactive';
     description.textContent = !access ? 'Allow website access to use providers and playback.' : result?.active ? 'Working automatically on this tab.' : result?.supported ? 'Waiting for the Vega tab. Reload it to retry.' : 'Open Vega to use the extension.';
-    origin.textContent = result?.supported ? new URL(tab.url).host : 'vega-app.in · localhost';
+    origin.textContent = result?.supported ? new URL(tab.url).host : 'web.vega-app.in · localhost';
     allow.hidden = access; remove.hidden = !access;
     allow.disabled = requesting; remove.disabled = requesting;
     document.querySelector('#access-description').textContent = access ? 'All HTTP/HTTPS websites are allowed for provider and video requests.' : 'Allow provider and video servers on all HTTP/HTTPS websites.';

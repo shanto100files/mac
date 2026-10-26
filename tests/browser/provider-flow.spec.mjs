@@ -1,4 +1,6 @@
 import {test, expect} from '@playwright/test';
+import {connectTestBrowserExtension} from '../helpers/browser-extension.mjs';
+test.beforeEach(async ({page}) => connectTestBrowserExtension(page));
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';

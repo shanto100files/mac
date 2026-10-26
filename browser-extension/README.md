@@ -1,9 +1,12 @@
 # Vega browser extension
 
-Optional Manifest V3 adapter for the shared Vega web app. It contains no content
-providers or provider sources. Direct CORS-permitted requests still work without
-this extension; installed TV apps will use their own implementation of the same
-platform host contract.
+Required Manifest V3 adapter for the shared Vega web app. Install it from the
+[Chrome Web Store](https://chromewebstore.google.com/detail/vega/iofleagpffjfcaegclkgbjjfeoinmjhe),
+open its popup, choose **Allow all websites**, then reload Vega. The web app stays
+accessible without the extension and prompts to install it when adding a provider
+source or installing a provider. The prompt is dismissible. It contains no
+content providers or provider sources. Desktop and installed TV apps use their own
+implementation of the platform host contract and do not require this extension.
 
 ## Install for development
 
@@ -21,7 +24,7 @@ platform host contract.
 7. Add a provider source and install a provider explicitly in Vega's Extensions
    page. Activation does not add either.
 
-The bridge runs only on `https://vega-app.in`, HTTP(S) `localhost` and HTTP(S)
+The bridge runs only on `https://web.vega-app.in`, `https://vega-app.in`, HTTP(S) `localhost` and HTTP(S)
 `127.0.0.1` (the local development alias). Other domains, subdomains, production
 HTTP/nonstandard ports and embedded frames are not authorized. Local ports are
 allowed for development. To disable it, use Chrome's extension controls.
@@ -30,7 +33,7 @@ for unrelated origins, and ignores saved approvals. App providers, sources and
 preferences remain intact.
 
 On Windows, `npm run build:extension` creates
-`dist-extension/vega-browser-host-0.5.0.zip`. The directory can be loaded unpacked;
+`dist-extension/vega-browser-host-0.5.1.zip`. The directory can be loaded unpacked;
 the ZIP is a packaging artifact, not a published Chrome Web Store release.
 
 ## Access and delivery

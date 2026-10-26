@@ -1,4 +1,5 @@
 import {test,expect} from '@playwright/test';
+
 test('controller polling sleeps when off, disconnected or hidden and wakes for input',async({page})=>{
  await page.addInitScript(()=>{
   window.padTest={calls:0,pads:[],activity:0,hidden:false};

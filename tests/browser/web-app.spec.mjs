@@ -15,7 +15,7 @@ test('shared app boots and navigates without Tauri, providers or extension', asy
     await page.getByRole('navigation', {name: 'Main navigation'}).getByRole('button', {name, exact: true}).click();
     await expect(page).toHaveURL(new RegExp(`${pathname === '/' ? '/$' : pathname}`));
     await expect(page.locator('.layout-content')).toBeVisible();
-    if (pathname === '/extensions') await page.getByRole('dialog').getByRole('button', {name: 'Close', exact: true}).click();
+    if (pathname === '/extensions') await expect(page.getByRole('dialog')).toHaveCount(0);
   }
   const state = await page.evaluate(async () => {
     const {extensionStorage} = await import('/src/lib/storage/extensionStorage.ts');

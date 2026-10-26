@@ -178,9 +178,24 @@ canvas.JASSUB {
 }
 
 /* Even an empty fullscreen overlay can keep WebKitGTK compositing over the
-   video. The player surface handles background input while controls sleep. */
-.player-page .player-controls-wrapper:not(.visible) {
+   video. Remove it after its fade finishes, rather than cutting the fade off. */
+.player-page .player-controls-wrapper:not(.visible):not(.exiting) {
   display: none;
+}
+
+.player-controls-wrapper.visible {
+  animation: player-controls-enter 0.25s ease;
+}
+
+.player-controls-wrapper.exiting {
+  opacity: 0;
+  transition: opacity 0.25s ease;
+  pointer-events: none;
+}
+
+@keyframes player-controls-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 .player-controls-wrapper .controls-gradient-top,
@@ -1841,12 +1856,34 @@ canvas.JASSUB {
 
 .player-episode-sidebar.open {
   transform: translateX(0);
+  animation: player-sidebar-enter 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Closed panels must not leave a shadow/compositing layer over the video. */
-.player-episode-sidebar:not(.open),
-.player-episode-sidebar-backdrop:not(.visible) {
+@keyframes player-sidebar-enter {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.player-episode-sidebar-backdrop.visible {
+  animation: player-controls-enter 0.3s ease;
+}
+
+.player-episode-sidebar.exiting { pointer-events: none; }
+
+/* Remove the closed layers only once their closing transitions finish. */
+.player-episode-sidebar:not(.open):not(.exiting),
+.player-episode-sidebar-backdrop:not(.visible):not(.exiting) {
   display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-controls-wrapper,
+  .player-controls-wrapper *,
+  .player-episode-sidebar,
+  .player-episode-sidebar-backdrop {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .player-episode-sidebar-header {

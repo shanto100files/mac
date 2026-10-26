@@ -32,6 +32,7 @@ test('optional all-website access gates requests, grants from popup and cleans u
     worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
     page=await context.newPage();await page.goto('http://127.0.0.1:1427');
     await expect.poll(()=>page.evaluate(()=>window.vegaPlatformHost?.kind)).toBe('browser-extension');
+    await expect(page.getByRole('heading',{name:'Welcome to Vega'})).toBeVisible();
     const approvedPopup=await context.newPage();await approvedPopup.goto(new URL('popup.html',worker.url()).href);
     await expect.poll(()=>worker.evaluate(origins=>chrome.permissions.contains({origins}),origins)).toBe(true);
     await expect(approvedPopup.getByRole('button',{name:'Remove website access',exact:true})).toBeVisible();

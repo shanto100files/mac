@@ -9,6 +9,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {isTauriRuntime} from "../platform/host";
 import type { MpvTrack } from "../lib/player/PlayerEngine";
 import { usePlayerEngine } from "../lib/hooks/usePlayerEngine";
+import {useExitPresence} from '../lib/hooks/useExitPresence';
 import { useMpvPlayer } from "../lib/hooks/useMpvPlayer";
 import { useStream } from "../lib/hooks/useStream";
 import { usePlayerProgress } from "../lib/hooks/usePlayerSettings";
@@ -797,6 +798,7 @@ const DesktopPlayer: React.FC<any> = ({
   );
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showEpisodeSidebar, setShowEpisodeSidebar] = useState(false);
+  const episodeSidebarPresent = useExitPresence(showEpisodeSidebar, 300);
   const activeEpisodeItemRef = useRef<HTMLButtonElement | null>(null);
   const showEpisodeSidebarSetting = settingsStorage.showPlayerEpisodeSidebar();
   const hasMultipleEpisodes =
@@ -2505,7 +2507,7 @@ const DesktopPlayer: React.FC<any> = ({
       {showEpisodeSidebarSetting && hasMultipleEpisodes && (
         <>
           <div
-            className={`player-episode-sidebar-backdrop ${showEpisodeSidebar ? "visible" : ""}`}
+            className={`player-episode-sidebar-backdrop ${showEpisodeSidebar ? "visible" : episodeSidebarPresent ? "exiting" : ""}`}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
@@ -2515,7 +2517,9 @@ const DesktopPlayer: React.FC<any> = ({
           <FocusContext.Provider value={sidebarFocusKey}>
             <aside
               ref={sidebarFocusRef}
-              className={`player-episode-sidebar ${showEpisodeSidebar ? "open" : ""}`}
+              className={`player-episode-sidebar ${showEpisodeSidebar ? "open" : episodeSidebarPresent ? "exiting" : ""}`}
+              aria-hidden={!showEpisodeSidebar}
+              inert={!showEpisodeSidebar}
               data-prevent-wheel-volume="true"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => e.stopPropagation()}
