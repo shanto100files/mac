@@ -11,12 +11,11 @@ export function validateProviderModuleVersion(
   providerValue: string,
   version: string,
   fileName: string,
-  requireHeader = false,
 ): boolean {
   const prefix = code.slice(0, 512);
   const header = /^\uFEFF?\/\/ @vega-provider ([A-Za-z0-9_.-]+)\r?\n\/\/ @vega-version ([A-Za-z0-9_.+-]+)(?:\r?\n|$)/.exec(prefix);
   if (!header) {
-    if (requireHeader || /@vega-(?:provider|version)\b/.test(prefix)) {
+    if (/@vega-(?:provider|version)\b/.test(prefix)) {
       throw new ProviderVersionMismatchError(fileName, 'has a missing or invalid version header');
     }
     return false;
@@ -31,11 +30,10 @@ export function validateProviderModuleSet(
   modules: Record<string, string>,
   providerValue: string,
   version: string,
-  requireHeader = false,
 ): void {
   // A partially propagated deployment must not mix stamped and unstamped files.
   const stamped = Object.entries(modules).map(([name, code]) =>
-    validateProviderModuleVersion(code, providerValue, version, name, requireHeader),
+    validateProviderModuleVersion(code, providerValue, version, name),
   );
   if (stamped.some(Boolean) && stamped.some(value => !value)) {
     throw new ProviderVersionMismatchError('provider', 'contains mixed versioned and unversioned files');

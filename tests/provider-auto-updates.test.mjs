@@ -151,14 +151,14 @@ for(const app of ['desktop','mobile']) {
     assert.equal(f.state.notifications||0,0);
   });
   const stamped=(version='2.0.0',id='fixture')=>`// @vega-provider ${id}\n// @vega-version ${version}\nexports.fixture=true;`;
-  test(`${app}: manifest header requirement reaches downloads`,async()=>{
+  test(`${app}: manifests without header flags allow legacy installations`,async()=>{
     const f=fixture(app);
-    f.state.request=async()=>({data:[{value:'fixture',version:'2.0.0',moduleVersionHeader:true}]});
+    f.state.request=async()=>({data:[{value:'fixture',version:'2.0.0'}]});
     const providers=await f.fetchManifest(f.available.source,true);
-    assert.equal(providers[0].moduleVersionHeader,true);
+    assert.equal(providers[0].version,'2.0.0');
     f.state.request=async()=>({data:'old unstamped code'});
-    await assert.rejects(f.extensionManager.installProvider(providers[0]),/not synchronized/);
-    assert.equal(f.cache.get('fixture').version,'1.0.0');
+    await f.extensionManager.installProvider(providers[0]);
+    assert.equal(f.cache.get('fixture').version,'2.0.0');
   });
   test(`${app}: fresh install rejects mismatched versions without caching or installing`,async()=>{
     const f=fixture(app);f.installed.clear();f.cache.clear();
@@ -170,7 +170,7 @@ for(const app of ['desktop','mobile']) {
   test(`${app}: stale optional file preserves installed code and version`,async()=>{
     const f=fixture(app);
     f.state.request=async url=>({data:stamped(url.includes('/settings.js')?'1.0.0':'2.0.0')});
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),false);
+    assert.equal(await f.service.updateProvider(f.available),false);
     assert.equal(f.cache.get('fixture').version,'1.0.0');assert.equal(f.installed.get('fixture').version,'1.0.0');
     assert.equal(f.state.downloads,7);
   });
@@ -179,10 +179,10 @@ for(const app of ['desktop','mobile']) {
     assert.equal(await f.service.updateProvider(f.available),false);
     assert.equal(f.cache.get('fixture').version,'1.0.0');
   });
-  test(`${app}: required headers reject old entirely unstamped deployments`,async()=>{
+  test(`${app}: headerless third-party providers remain updateable`,async()=>{
     const f=fixture(app);f.state.request=async()=>({data:'exports.old=true;'});
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),false);
-    assert.equal(f.installed.get('fixture').version,'1.0.0');
+    assert.equal(await f.service.updateProvider(f.available),true);
+    assert.equal(f.installed.get('fixture').version,'2.0.0');
   });
   test(`${app}: one fresh retry recovers a stale CDN module`,async()=>{
     const f=fixture(app),urls=[];
@@ -190,15 +190,14 @@ for(const app of ['desktop','mobile']) {
       if(url.includes('/stream.js')){urls.push(url);return {data:stamped(urls.length===1?'1.0.0':'2.0.0')};}
       return {data:stamped()};
     };
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+    assert.equal(await f.service.updateProvider(f.available),true,f.state.errors.join('\n'));
     assert.equal(urls.length,2);assert.notEqual(urls[0],urls[1]);
     assert.equal(f.state.downloads,7);assert.equal(f.cache.get('fixture').version,'2.0.0');
-    assert.equal(f.installed.get('fixture').moduleVersionHeader,true);
   });
-  test(`${app}: header opt-in permits genuinely absent optional files`,async()=>{
+  test(`${app}: genuinely absent optional files are still allowed`,async()=>{
     const f=fixture(app);
     f.state.request=async url=>{if(/\/(episodes|settings)\.js/.test(url))throw {response:{status:404}};return {data:stamped()};};
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+    assert.equal(await f.service.updateProvider(f.available),true,f.state.errors.join('\n'));
     assert.equal(f.state.downloads,6);
   });
   test(`${app}: legacy sources cannot mix stamped and unstamped modules`,async()=>{
@@ -207,32 +206,15 @@ for(const app of ['desktop','mobile']) {
     assert.equal(await f.service.updateProvider(f.available),false);
     assert.equal(f.cache.get('fixture').version,'1.0.0');
   });
-  test(`${app}: malformed headers are rejected even without manifest opt-in`,async()=>{
+  test(`${app}: malformed headers are rejected without any manifest flag`,async()=>{
     const f=fixture(app);f.state.request=async()=>({data:'// @vega-provider fixture\nexports.old=true;'});
     assert.equal(await f.service.updateProvider(f.available),false);
     assert.equal(f.installed.get('fixture').version,'1.0.0');
   });
   test(`${app}: valid BOM and CRLF headers work`,async()=>{
     const f=fixture(app);f.state.request=async()=>({data:'\uFEFF'+stamped().replaceAll('\n','\r\n')});
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+    assert.equal(await f.service.updateProvider(f.available),true,f.state.errors.join('\n'));
   });
 
-  for (const flag of [false, undefined]) {
-    test(`${app}: header flag ${String(flag)} permits wholly unstamped installs and updates`, async () => {
-      const f=fixture(app),provider={...f.available,moduleVersionHeader:flag};
-      f.state.request=async()=>({data:'exports.legacy=true;'});
-      await f.extensionManager.installProvider(provider);
-      assert.equal(f.cache.get('fixture').version,'2.0.0');
-      assert.equal(await f.service.updateProvider({...provider,version:'3.0.0'}),true,f.state.errors.join('\n'));
-      assert.equal(f.installed.get('fixture').version,'3.0.0');
-    });
-  }
-  test(`${app}: false header flag still rejects mismatched stamped files`, async () => {
-    const f=fixture(app);
-    f.state.request=async()=>({data:stamped('1.0.0')});
-    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:false}),false);
-    assert.equal(f.installed.get('fixture').version,'1.0.0');
-    assert.equal(f.cache.get('fixture').version,'1.0.0');
-  });
 
 }
