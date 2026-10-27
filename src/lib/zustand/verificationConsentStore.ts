@@ -7,8 +7,8 @@ interface ConsentRequest {
   url: string;
   finish: (allow: boolean, remember?: boolean) => void;
 }
-interface ConsentState {requests: ConsentRequest[]}
-export const useVerificationConsentStore = create<ConsentState>(() => ({requests: []}));
+interface ConsentState {requests: ConsentRequest[]; failure: string | null}
+export const useVerificationConsentStore = create<ConsentState>(() => ({requests: [], failure: null}));
 let sequence = 0;
 
 /** The same user-controlled gate precedes browser and native window creation. */

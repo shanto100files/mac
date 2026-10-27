@@ -13,6 +13,8 @@ document.querySelector('#version').textContent = `v${chrome.runtime.getManifest(
 async function update() {
   try {
     const access = await hasAllWebsiteAccess();
+    const incognito = await chrome.extension.isAllowedIncognitoAccess();
+    document.querySelector('#incognito-description').textContent = incognito ? 'Private verification windows are enabled.' : 'Enable Allow in Incognito in the extension details to open website verification. The browser does not ask automatically.';
     const [tab] = await chrome.tabs.query({active: true, currentWindow: true});
     const result = tab?.id === undefined ? undefined : await chrome.runtime.sendMessage({type: 'status', tabId: tab.id});
     document.body.dataset.state = access && result?.active ? 'active' : 'inactive';
@@ -49,4 +51,10 @@ remove.addEventListener('click', () => {
     .finally(() => {requesting = false; void update();});
 });
 void update();
+document.querySelector('#verification-settings').addEventListener('click', () => {
+  void chrome.tabs.create({url:`chrome://extensions/?id=${chrome.runtime.id}`}).catch(error => {
+    feedback.textContent = error.message || 'Open your browser extension settings and enable Allow in Incognito for Vega.';
+    feedback.hidden = false;
+  });
+});
 setInterval(update, 1000);

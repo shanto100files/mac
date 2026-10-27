@@ -1,5 +1,23 @@
 import {test, expect} from '@playwright/test';
 
+test('missing incognito permission remains visible even when the provider catches the error',async({page})=>{
+  await page.goto('/settings');
+  await page.evaluate(async()=>{
+    window.vegaPlatformHost={version:1,kind:'browser-extension',capabilities:{restrictedHeaders:true,isolatedCookies:true,publicDestinationChecks:true,manualRedirects:true,mediaDelivery:false},
+      verifyProvider:async()=>{throw new Error('Enable Allow in Incognito for Vega before verifying a provider.');}};
+    const {openWebView}=await import('/src/platform/waf.ts');
+    void openWebView('https://verification.example/challenge',{waitForCookie:'cf_clearance',force:true},'fixture','Fixture').catch(()=>{});
+  });
+  const consent=page.getByRole('dialog',{name:'Open provider verification window?'});
+  await expect(consent).toContainText('does not prompt');
+  await consent.getByRole('button',{name:'Confirm',exact:true}).click();
+  const failure=page.getByRole('dialog',{name:'Provider verification failed'});
+  await expect(failure).toContainText('Allow in Incognito');
+  await expect(failure).toContainText('Verification settings');
+  await failure.getByRole('button',{name:'Close',exact:true}).click();
+  await expect(failure).toHaveCount(0);
+});
+
 test('verification consent, remembered choices and Settings apply before any window opens', async ({page}, testInfo) => {
   await page.goto('/settings');
   await expect(page.getByRole('heading', {name:'Provider verification windows', exact:true})).toBeVisible();

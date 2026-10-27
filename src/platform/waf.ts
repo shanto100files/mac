@@ -5,7 +5,7 @@ import {useWafStore} from '../lib/zustand/wafStore';
 import {headers as commonHeaders} from '../lib/providers/headers';
 import {providerAuthor} from '../lib/providers/providerScope';
 import {deleteJarCookie, getJarCookieMap, getVerificationUserAgent, storeJarCookies, storeVerificationUserAgent} from '../lib/providers/providerCookieJar';
-import {authorizeVerification} from '../lib/zustand/verificationConsentStore';
+import {authorizeVerification, useVerificationConsentStore} from '../lib/zustand/verificationConsentStore';
 import {extensionStorage} from '../lib/storage/extensionStorage';
 
 const pickUserAgent = (
@@ -111,6 +111,11 @@ export const openWebView = async (
         storeVerificationUserAgent(author, result.url, result.userAgent);
         // Read HTML through isolated provider HTTP, never from a logged-in DOM.
         return retryPage({data:'', cookies:'', cookieMap:{}, userAgent:result.userAgent, url:result.url});
+      } catch (error) {
+        // Providers may catch verification errors themselves. Keep host failures
+        // visible so a missing browser permission cannot look like a dead button.
+        if (!controller.signal.aborted) useVerificationConsentStore.setState({failure: error instanceof Error ? error.message : 'The browser could not open provider verification.'});
+        throw error;
       } finally {signal?.removeEventListener('abort', abort);}
     }
     return new Promise<OpenWebViewResult>((resolve, reject) => {
