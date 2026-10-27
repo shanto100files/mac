@@ -28,6 +28,8 @@ ___
 ## Vega for Mobile
 https://github.com/vega-org/vega-app
 
+## Vega for Web
+https://web.vega-app.in
 
 <br>
 
