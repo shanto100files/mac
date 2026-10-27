@@ -4,9 +4,44 @@ import {assertPublicDestination} from './network-guard.mjs';
 
 let queue = Promise.resolve(), active;
 const extensionOrigin = new URL(chrome.runtime.getURL('/')).origin;
-chrome.webRequest.onHeadersReceived.addListener(details => {
-  if (active && details.initiator === extensionOrigin && details.url === active.url) active.response = details;
-}, {urls: ['http://*/*', 'https://*/*'], types: ['xmlhttprequest']}, ['responseHeaders', 'extraHeaders']);
+const requestFilter = {urls: ['http://*/*', 'https://*/*'], types: ['xmlhttprequest']};
+const matchesActive = details => active && details.initiator === extensionOrigin && details.url === active.url &&
+  (active.requestId === undefined || details.requestId === active.requestId);
+chrome.webRequest.onBeforeRequest.addListener(details => {
+  if (matchesActive(details)) active.requestId = details.requestId;
+}, requestFilter);
+function captureResponse(details) {
+  if (!matchesActive(details) || details.statusCode < 200 || details.statusCode > 599) return;
+  // onBeforeRedirect may omit Set-Cookie. Keep the extraHeaders snapshot from
+  // onHeadersReceived so authentication established by the redirect survives.
+  const responseHeaders = [...(details.redirectUrl && active.response?.responseHeaders?.length
+    ? active.response.responseHeaders : details.responseHeaders || [])];
+  // Browser-generated redirects can expose their destination through this
+  // event even when fetch returns an opaque redirect with no headers.
+  if (details.redirectUrl && !responseHeaders.some(header => header.name.toLowerCase() === 'location')) {
+    responseHeaders.push({name:'Location', value:details.redirectUrl});
+  }
+  active.response = {...details, responseHeaders};
+  active.notify?.();
+}
+chrome.webRequest.onHeadersReceived.addListener(captureResponse, requestFilter, ['responseHeaders', 'extraHeaders']);
+chrome.webRequest.onBeforeRedirect.addListener(captureResponse, requestFilter, ['responseHeaders']);
+
+async function waitForResponse(session, signal) {
+  signal.throwIfAborted();
+  if (session.response) return session.response;
+  return new Promise((resolve, reject) => {
+    const finish = error => {
+      clearTimeout(timer); signal.removeEventListener('abort', abort); session.notify = undefined;
+      error ? reject(error) : resolve(session.response);
+    };
+    const abort = () => finish(signal.reason || new DOMException('Aborted','AbortError'));
+    const timer = setTimeout(() => finish(), 1000);
+    session.notify = () => finish();
+    signal.addEventListener('abort', abort, {once:true});
+    if (signal.aborted) abort();
+  });
+}
 
 async function readBounded(response, signal) {
   if (!response.body) return [];
@@ -44,13 +79,15 @@ async function perform(input, signal, headersOnly) {
         id: 1, priority: 1, condition: {regexFilter: exactUrl(url), isUrlFilterCaseSensitive: true, tabIds: [-1], initiatorDomains: [chrome.runtime.id], resourceTypes: ['xmlhttprequest']},
         action: {type: 'modifyHeaders', requestHeaders: requestChanges(headers)},
       }]});
-      signal.throwIfAborted(); active = {url};
+      signal.throwIfAborted(); const session = active = {url};
       // Headers are applied by DNR, outside fetch's forbidden-header guard.
       response = await fetch(url, {method, body: body?.length ? Uint8Array.from(body) : undefined, credentials: 'omit', redirect: 'manual', cache: 'no-store', signal});
-      captured = active.response;
+      // webRequest notifications are asynchronous. Do not mistake fetch's
+      // deliberately hidden redirect status (0) for a failed provider response.
+      captured = session.response || (response.status === 0 ? await waitForResponse(session, signal) : undefined);
       const status = captured?.statusCode || response.status;
       const responseHeaders = captured?.responseHeaders?.filter(item => typeof item.value === 'string').map(item => [item.name, item.value]) || [...response.headers];
-      if (status < 200 || status > 599) throw new Error('The browser could not expose this HTTP response.');
+      if (status < 200 || status > 599) throw new Error(`The extension could not read the ${response.type === 'opaqueredirect' ? 'redirect' : 'HTTP response'} from ${new URL(url).hostname}. Reload the Vega extension and app, then retry.`);
       const redirect = [301, 302, 303, 307, 308].includes(status);
       const location = responseHeaders.find(([name]) => name.toLowerCase() === 'location')?.[1];
       const setCookies = responseHeaders.filter(([name]) => name.toLowerCase() === 'set-cookie').map(([, value]) => value);

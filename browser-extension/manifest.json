@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Vega",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Provider access and playback for Vega. Works automatically on web.vega-app.in, vega-app.in and localhost.",
   "minimum_chrome_version": "120",
   "permissions": [
