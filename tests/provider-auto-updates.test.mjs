@@ -217,4 +217,22 @@ for(const app of ['desktop','mobile']) {
     assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
   });
 
+  for (const flag of [false, undefined]) {
+    test(`${app}: header flag ${String(flag)} permits wholly unstamped installs and updates`, async () => {
+      const f=fixture(app),provider={...f.available,moduleVersionHeader:flag};
+      f.state.request=async()=>({data:'exports.legacy=true;'});
+      await f.extensionManager.installProvider(provider);
+      assert.equal(f.cache.get('fixture').version,'2.0.0');
+      assert.equal(await f.service.updateProvider({...provider,version:'3.0.0'}),true,f.state.errors.join('\n'));
+      assert.equal(f.installed.get('fixture').version,'3.0.0');
+    });
+  }
+  test(`${app}: false header flag still rejects mismatched stamped files`, async () => {
+    const f=fixture(app);
+    f.state.request=async()=>({data:stamped('1.0.0')});
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:false}),false);
+    assert.equal(f.installed.get('fixture').version,'1.0.0');
+    assert.equal(f.cache.get('fixture').version,'1.0.0');
+  });
+
 }
