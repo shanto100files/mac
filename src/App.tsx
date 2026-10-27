@@ -17,7 +17,7 @@ import { ExtensionsPage } from "./pages/ExtensionsPage";
 import { HomePage } from "./pages/HomePage";
 import { MetaPage } from "./pages/MetaPage";
 import { SearchPage } from "./pages/SearchPage";
-import { Spinner } from "./components/ui/spinner";
+import { AnimatedHourglass } from "./components/AnimatedHourglass";
 import { WafDialog } from "./components/WafDialog";
 import { VerificationConsentDialog } from "./components/VerificationConsentDialog";
 import useThemeStore from "./lib/zustand/themeStore";
@@ -246,7 +246,11 @@ export default function App() {
           <Routes>
             {/* Player is outside Layout since it needs fullscreen without sidebar */}
             <Route path="player" element={
-              <Suspense fallback={<div role="status" aria-label="Loading player"><Spinner /></div>}>
+              <Suspense fallback={
+                <div role="status" aria-label="Loading player" style={{position:'fixed',inset:0,display:'grid',placeItems:'center',background:'#000',zIndex:100}}>
+                  <AnimatedHourglass />
+                </div>
+              }>
                 <PlayerPage />
               </Suspense>
             } />

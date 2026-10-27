@@ -314,7 +314,7 @@ export const PlayerPage: React.FC = () => {
     return (
       <div className="player-page">
         <div className="player-loading">
-          <div className="loading-spinner" />
+          <AnimatedHourglass />
         </div>
       </div>
     );

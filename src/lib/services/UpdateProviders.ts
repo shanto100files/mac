@@ -191,7 +191,7 @@ class UpdateProvidersService {
         const currentActive = useContentStore.getState().provider;
         if (currentActive) {
           const updatedActive = latestInstalled.find(
-            (p) => p.value === currentActive.value,
+            (p) => p.value === currentActive.value && p.source?.author === currentActive.source?.author,
           );
           if (updatedActive) {
             useContentStore.getState().setProvider(updatedActive);
@@ -227,7 +227,7 @@ class UpdateProvidersService {
     } catch (error) {
       if (
         error instanceof Error &&
-        error.message.includes("rate limit")
+        error.message.includes("rate limit") && settingsStorage.isNotificationsEnabled() && settingsStorage.isProviderAutoUpdateEnabled()
       ) {
         toast({
           title: "Rate Limited",

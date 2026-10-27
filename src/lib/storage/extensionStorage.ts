@@ -22,6 +22,8 @@ export interface ProviderExtension {
   display_name: string;
   source: {author: string; url: string};
   version: string;
+  /** Require the manifest version stamp in every downloaded provider module. */
+  moduleVersionHeader?: boolean;
   icon: string;
   disabled: boolean;
   type: 'global' | 'english' | 'india' | 'italy' | 'anime' | 'drama';

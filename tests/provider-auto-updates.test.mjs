@@ -15,11 +15,12 @@ function fixture(app) {
   const installed=new Map([[original.value,original]]), cache=new Map([[original.value,{version:'1.0.0'}]]);
   const extensionStorage={
     getInstalledProviders:()=>[...installed.values()],getProviderSource:()=>source,
+    getProviderSources:()=>[source],getManifestCache:()=>[],setManifestCache(){},setAvailableProviders(){},
     isProviderInstalled:(value,author)=>installed.get(value)?.source.author===author,
     installProvider:provider=>installed.set(provider.value,provider),
     cacheProviderModules:module=>cache.set(module.value,module),removeProviderModules:value=>cache.delete(value),
   };
-  const environment={console:{log(){},warn(){},error(...args){state.errors.push(args.map(value=>value?.message||String(value)).join(' '));}},URL,setTimeout,clearTimeout,
+  const environment={Error,console:{log(){},warn(){},error(...args){state.errors.push(args.map(value=>value?.message||String(value)).join(' '));}},URL,setTimeout,clearTimeout,
     setInterval:callback=>{callbacks.set('interval',callback);return 1;},clearInterval:()=>callbacks.delete('interval'),
     window:{addEventListener:(name,callback)=>callbacks.set(name,callback),removeEventListener:name=>callbacks.delete(name)},
     document:{visibilityState:'visible',addEventListener:(name,callback)=>callbacks.set(name,callback),removeEventListener:name=>callbacks.delete(name)},
@@ -37,23 +38,25 @@ function fixture(app) {
   });
   const settingsStorage=settings.settingsStorage;
   const {extensionManager}=load('services/ExtensionManager.ts',{
-    axios:{default:{get:async()=>{state.downloads++;await state.downloadGate;return {data:'exports.fixture=true;'};}}},
+    axios:{default:{get:async(url)=>{state.downloads++;await state.downloadGate;if(state.request)return state.request(url);return {data:'exports.fixture=true;'};}}},
     '../../platform/network':{platformAxiosAdapter:()=>{}},
     '../storage/extensionStorage':{extensionStorage},'../storage/StorageService':{mainStorage},
     '../storage/sourceTokenStorage':{sourceTokenStorage:{has:()=>false},getSourceAuthHeaders:()=>({})},
-    '../utils/helpers':{getProviderFilesUrl:()=>source.url+'/dist/fixture'},
+    '../utils/helpers':{getProviderFilesUrl:()=>source.url+'/dist/fixture',isValidProviderPath:()=>true},
+    './providerVersion':load('services/providerVersion.ts',{}),
     './sourceRequests':{validateSourceTransport(){},getSourceRequestHeaders:()=>({}),throwIfRateLimited(){},throwIfSourceForbidden(){}},
     './providerIntegrity':{verifyProviderModule:async()=>{}},
   });
+  const fetchManifest=extensionManager.fetchManifest.bind(extensionManager);
   extensionManager.initialize=async()=>{};
   extensionManager.fetchManifest=async()=>{state.manifests++;await state.manifestGate;return [available];};
   const {updateProvidersService}=load('services/UpdateProviders.ts',{
     '../storage/extensionStorage':{extensionStorage},'./ExtensionManager':{extensionManager},'../storage':{settingsStorage},
-    '../zustand/toastStore':{toast(){}},'./Notification':{notificationService:{showUpdateProgress:async()=>{},cancelNotification:async()=>{},displayUpdateNotification:async()=>{}}},
-    '../zustand/contentStore':{default:{getState:()=>({setInstalledProviders(){},provider:undefined})}},
+    '../zustand/toastStore':{toast(){state.notifications=(state.notifications||0)+1;}},'./Notification':{notificationService:{showUpdateProgress:async()=>{},cancelNotification:async()=>{},displayUpdateNotification:async()=>{state.notifications=(state.notifications||0)+1;}}},
+    '../zustand/contentStore':{default:{getState:()=>({setInstalledProviders(){},provider:state.activeProvider,setProvider:provider=>{state.activeProvider=provider;}})}},
   });
   settingsStorage.setNotificationsEnabled(false);
-  return {state,settingsStorage,settings,values,installed,cache,extensionManager,service:updateProvidersService,callbacks,available};
+  return {state,settingsStorage,settings,values,installed,cache,extensionStorage,extensionManager,service:updateProvidersService,callbacks,available,fetchManifest};
 }
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 
@@ -109,4 +112,109 @@ for(const app of ['desktop','mobile']) {
     f.installed.delete('fixture');finish();await updating;
     assert.equal(f.installed.size,0);assert.equal(f.cache.has('fixture'),false);
   });
+
+  test(`${app}: optional module timeouts abort without committing`,async()=>{
+    const f=fixture(app);
+    f.state.request=async url=>{if(url.includes('/episodes.js'))throw new Error('timeout');return {data:'code'};};
+    assert.equal(await f.service.updateProvider(f.available),false);
+    assert.equal(f.installed.get('fixture').version,'1.0.0');assert.equal(f.cache.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: missing optional modules are allowed but empty responses are not`,async()=>{
+    const f=fixture(app);
+    f.state.request=async url=>{if(url.includes('/episodes.js'))throw {response:{status:404}};return {data:'code'};};
+    assert.equal(await f.service.updateProvider(f.available),true);
+    f.state.request=async url=>({data:url.includes('/settings.js')?'':'code'});
+    assert.equal(await f.service.updateProvider({...f.available,version:'3.0.0'}),false);
+    assert.equal(f.installed.get('fixture').version,'2.0.0');
+  });
+  test(`${app}: an older concurrent update cannot overwrite a newer committed version`,async()=>{
+    const f=fixture(app);let finish;
+    f.extensionManager.downloadProviderModules=async(_url,_author,value,version)=>{
+      const result={value,sourceAuthor:f.available.source.author,version,modules:{posts:'code'}};
+      if(version==='2.0.0')return new Promise(resolve=>{finish=()=>resolve(result);});
+      return result;
+    };
+    const older=f.extensionManager.updateProvider(f.available);await settle();
+    await f.extensionManager.updateProvider({...f.available,version:'3.0.0'});finish();
+    assert.equal(await older,false);
+    assert.equal(f.installed.get('fixture').version,'3.0.0');assert.equal(f.cache.get('fixture').version,'3.0.0');
+  });
+  test(`${app}: refreshing updates keeps the active provider source`,async()=>{
+    const f=fixture(app),other={...f.available,source:{author:'other',url:'https://other.example'}};
+    f.state.activeProvider=f.available;f.extensionStorage.getInstalledProviders=()=>[other,f.available];
+    await f.service.updateProviders([f.available],{showNotifications:false});
+    assert.equal(f.state.activeProvider.source.author,f.available.source.author);
+  });
+  test(`${app}: automatic rate-limit alerts obey notification preference`,async()=>{
+    const f=fixture(app);f.extensionManager.fetchManifest=async()=>{throw new Error('rate limit');};
+    await assert.rejects(f.service.checkForUpdatesAndAutoUpdate(),/rate limit/);
+    assert.equal(f.state.notifications||0,0);
+  });
+  const stamped=(version='2.0.0',id='fixture')=>`// @vega-provider ${id}\n// @vega-version ${version}\nexports.fixture=true;`;
+  test(`${app}: manifest header requirement reaches downloads`,async()=>{
+    const f=fixture(app);
+    f.state.request=async()=>({data:[{value:'fixture',version:'2.0.0',moduleVersionHeader:true}]});
+    const providers=await f.fetchManifest(f.available.source,true);
+    assert.equal(providers[0].moduleVersionHeader,true);
+    f.state.request=async()=>({data:'old unstamped code'});
+    await assert.rejects(f.extensionManager.installProvider(providers[0]),/not synchronized/);
+    assert.equal(f.cache.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: fresh install rejects mismatched versions without caching or installing`,async()=>{
+    const f=fixture(app);f.installed.clear();f.cache.clear();
+    f.state.request=async()=>({data:stamped('1.0.0')});
+    await assert.rejects(f.extensionManager.installProvider(f.available),/expected fixture v2.0.0/);
+    assert.equal(f.cache.size,0);assert.equal(f.installed.size,0);
+    assert.equal(f.state.downloads,12,'one retry per file, never an unbounded loop');
+  });
+  test(`${app}: stale optional file preserves installed code and version`,async()=>{
+    const f=fixture(app);
+    f.state.request=async url=>({data:stamped(url.includes('/settings.js')?'1.0.0':'2.0.0')});
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),false);
+    assert.equal(f.cache.get('fixture').version,'1.0.0');assert.equal(f.installed.get('fixture').version,'1.0.0');
+    assert.equal(f.state.downloads,7);
+  });
+  test(`${app}: a wrong provider with the right version is rejected`,async()=>{
+    const f=fixture(app);f.state.request=async()=>({data:stamped('2.0.0','other')});
+    assert.equal(await f.service.updateProvider(f.available),false);
+    assert.equal(f.cache.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: required headers reject old entirely unstamped deployments`,async()=>{
+    const f=fixture(app);f.state.request=async()=>({data:'exports.old=true;'});
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),false);
+    assert.equal(f.installed.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: one fresh retry recovers a stale CDN module`,async()=>{
+    const f=fixture(app),urls=[];
+    f.state.request=async url=>{
+      if(url.includes('/stream.js')){urls.push(url);return {data:stamped(urls.length===1?'1.0.0':'2.0.0')};}
+      return {data:stamped()};
+    };
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+    assert.equal(urls.length,2);assert.notEqual(urls[0],urls[1]);
+    assert.equal(f.state.downloads,7);assert.equal(f.cache.get('fixture').version,'2.0.0');
+    assert.equal(f.installed.get('fixture').moduleVersionHeader,true);
+  });
+  test(`${app}: header opt-in permits genuinely absent optional files`,async()=>{
+    const f=fixture(app);
+    f.state.request=async url=>{if(/\/(episodes|settings)\.js/.test(url))throw {response:{status:404}};return {data:stamped()};};
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+    assert.equal(f.state.downloads,6);
+  });
+  test(`${app}: legacy sources cannot mix stamped and unstamped modules`,async()=>{
+    const f=fixture(app);
+    f.state.request=async url=>({data:url.includes('/stream.js')?'exports.old=true;':stamped()});
+    assert.equal(await f.service.updateProvider(f.available),false);
+    assert.equal(f.cache.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: malformed headers are rejected even without manifest opt-in`,async()=>{
+    const f=fixture(app);f.state.request=async()=>({data:'// @vega-provider fixture\nexports.old=true;'});
+    assert.equal(await f.service.updateProvider(f.available),false);
+    assert.equal(f.installed.get('fixture').version,'1.0.0');
+  });
+  test(`${app}: valid BOM and CRLF headers work`,async()=>{
+    const f=fixture(app);f.state.request=async()=>({data:'\uFEFF'+stamped().replaceAll('\n','\r\n')});
+    assert.equal(await f.service.updateProvider({...f.available,moduleVersionHeader:true}),true,f.state.errors.join('\n'));
+  });
+
 }
