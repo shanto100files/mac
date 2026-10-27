@@ -12,8 +12,7 @@ const Switch = React.forwardRef<
     { className, checked, onCheckedChange, disabled, ...props },
     forwardedRef,
   ) => {
-    const isAndroid = navigator.userAgent.toLowerCase().includes("android");
-    const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+    const tvMode = settingsStorage.isTvModeEnabled();
     const checkedRef = React.useRef(Boolean(checked));
     const onCheckedChangeRef = React.useRef(onCheckedChange);
     checkedRef.current = Boolean(checked);

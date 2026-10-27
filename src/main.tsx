@@ -3,6 +3,8 @@ import ReactDOM from "react-dom/client";
 import axios from "axios";
 import { platformAxiosAdapter } from "./platform/network";
 import "./styles/index.css";
+import "./styles/web-responsive.css";
+import {isTauriRuntime} from './platform/host';
 import App from "./App";
 import { installVegaLog } from "./lib/logging/vegaLog";
 import {installTvHost} from './platform/tvHost';
@@ -11,6 +13,7 @@ import {initializeUiScale} from './lib/uiScale';
 // First, so startup errors reach the exportable log file.
 installVegaLog();
 installTvHost();
+document.documentElement.classList.toggle('web-app', !isTauriRuntime() && !import.meta.env.VITE_TV_HOST);
 initializeUiScale();
 
 // The current host supplies HTTP access; direct browser requests remain available.

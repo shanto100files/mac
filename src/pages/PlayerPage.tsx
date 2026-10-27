@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {isTauriRuntime} from "../platform/host";
+import {supportsVlcLaunch} from "../platform/externalLinks";
 import type { MpvTrack } from "../lib/player/PlayerEngine";
 import { usePlayerEngine } from "../lib/hooks/usePlayerEngine";
 import {useExitPresence} from '../lib/hooks/useExitPresence';
@@ -368,12 +369,12 @@ const PlayerInner: React.FC<PlayerInnerProps> = ({ state }) => {
     provider: state.providerValue || provider?.value || "",
   });
 
-  const isAndroid = navigator.userAgent.toLowerCase().includes("android");
+  const isAndroid = isTauriRuntime() && navigator.userAgent.toLowerCase().includes("android");
   const useExternalPlayer =
     isAndroid && settingsStorage.isExternalPlayerEnabled();
-  const useVlc = !isAndroid && settingsStorage.isVlcEnabled();
+  const useVlc = supportsVlcLaunch() && settingsStorage.isVlcEnabled();
 
-  if (isAndroid || useVlc) {
+  if (useExternalPlayer || useVlc) {
     return (
       <TvPlayer
         state={state}
@@ -824,8 +825,7 @@ const DesktopPlayer: React.FC<any> = ({
   const manualFullscreenRef = useRef(false);
   const prevVolumeRef = useRef<number>(100);
   const isWindows = navigator.userAgent.toLowerCase().includes("windows");
-  const isAndroid = navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
 
   const { ref: sidebarFocusRef, focusKey: sidebarFocusKey } = useFocusable({
     isFocusBoundary: true,
@@ -1017,7 +1017,7 @@ const DesktopPlayer: React.FC<any> = ({
   }, []);
 
   const openInVlc = useCallback(async () => {
-    if (!selectedStream?.link) return;
+    if (!supportsVlcLaunch() || !selectedStream?.link) return;
     try {
       let playUrl = selectedStream.link;
       if (isTorrentUrl(playUrl)) {
@@ -1860,7 +1860,11 @@ const DesktopPlayer: React.FC<any> = ({
     };
 
     const onMouseMoveEvent = () => revealControls();
-    const onTouch = () => revealControls();
+    // Background taps toggle controls on click. Revealing on touchstart first
+    // would immediately hide them again when that same tap produces its click.
+    const onTouch = (event: TouchEvent) => {
+      if (event.target instanceof Element && event.target.closest('.player-controls-wrapper')) scheduleHide();
+    };
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "F11") {
@@ -2204,6 +2208,7 @@ const DesktopPlayer: React.FC<any> = ({
     handleNextEpisode,
     handlePrevEpisode,
     revealControls,
+    scheduleHide,
     toast,
     handleZoomIn,
     handleZoomOut,
@@ -2367,7 +2372,7 @@ const DesktopPlayer: React.FC<any> = ({
           <PlayerInitError
             error={mpv.initializationError}
             onBack={() => navigate(-1)}
-            onOpenVlc={selectedStream?.link ? openInVlc : undefined}
+            onOpenVlc={supportsVlcLaunch() && selectedStream?.link ? openInVlc : undefined}
           />
         </div>
       )}
@@ -2481,7 +2486,7 @@ const DesktopPlayer: React.FC<any> = ({
           }}
           showShortcuts={showShortcuts}
           onToggleShortcuts={() => setShowShortcuts((current) => !current)}
-          onOpenVlc={openInVlc}
+          onOpenVlc={supportsVlcLaunch() ? openInVlc : undefined}
           onCopyLink={selectedStream?.link ? copyStreamLink : undefined}
           skips={combinedSkips}
         />

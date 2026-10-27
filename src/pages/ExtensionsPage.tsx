@@ -124,10 +124,7 @@ export const ExtensionsPage: React.FC = () => {
     useState<ProviderExtension | null>(null);
   const [settingsProvider, setSettingsProvider] =
     useState<ProviderExtension | null>(null);
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
 
   const isAnyDialogOpen = Boolean(
     showSourcePicker ||

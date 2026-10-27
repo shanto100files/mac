@@ -208,10 +208,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   onScrubbingChange,
   onMenuOpenChange,
 }) => {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const controlsPresent = useExitPresence(visible, 250);
 
   const { ref: containerRef, focusKey, focusSelf } = useFocusable({
@@ -240,6 +237,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   const pendingPreviewBucketRef = useRef<number | null>(null);
   const queuedPreviewBucketRef = useRef<number | null>(null);
   const draggingTimelineRef = useRef(false);
+  const timelineDragCleanupRef = useRef<(() => void) | null>(null);
   const thumbnailCacheRef = useRef(new Map<number, string | null>());
   const [timelinePreview, setTimelinePreview] = useState<{
     time: number;
@@ -407,6 +405,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   useEffect(() => {
     return () => {
+      timelineDragCleanupRef.current?.();
       if (pendingSeekTimerRef.current) {
         clearTimeout(pendingSeekTimerRef.current);
       }
@@ -490,8 +489,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
     [duration, onRequestThumbnail],
   );
 
-  const handleTrackMouseDown = useCallback(
-    (e: React.MouseEvent) => {
+  const handleTrackPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!e.isPrimary || e.button !== 0) return;
+      e.preventDefault();
+      timelineDragCleanupRef.current?.();
+      const pointerId = e.pointerId;
+      const target = e.currentTarget;
+      target.setPointerCapture(pointerId);
       if (seekCommitTimerRef.current) clearTimeout(seekCommitTimerRef.current);
       seekCommitTimerRef.current = null;
       draggingTimelineRef.current = true;
@@ -501,19 +506,33 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
         setPendingSeekTime(startTime);
       }
 
-      const onMove = (ev: MouseEvent) => {
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
         const moveTime = updateTimelinePreview(ev);
         if (moveTime !== null) {
           setPendingSeekTime(moveTime);
         }
       };
-      const onUp = (ev: MouseEvent) => {
-        const seekTime = updateTimelinePreview(ev);
+      const cleanup = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onCancel);
+        if (target.hasPointerCapture(pointerId)) target.releasePointerCapture(pointerId);
         draggingTimelineRef.current = false;
         onScrubbingChange?.(false);
+        timelineDragCleanupRef.current = null;
+      };
+      const onCancel = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        cleanup();
         setTimelinePreview(null);
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+        setPendingSeekTime(null);
+      };
+      const onUp = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        const seekTime = updateTimelinePreview(ev);
+        cleanup();
+        setTimelinePreview(null);
 
         if (seekTime !== null) {
           pendingSeekRef.current = seekTime;
@@ -530,8 +549,10 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
           setPendingSeekTime(null);
         }
       };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+      timelineDragCleanupRef.current = cleanup;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onCancel);
     },
     [onScrubbingChange, onSeek, updateTimelinePreview],
   );
@@ -741,7 +762,7 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
             updateTimelinePreview={updateTimelinePreview}
             draggingTimelineRef={draggingTimelineRef}
             trackRef={trackRef}
-            handleTrackMouseDown={handleTrackMouseDown}
+            handleTrackPointerDown={handleTrackPointerDown}
           />
 
           <div className="player-actions-row">

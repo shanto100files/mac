@@ -149,7 +149,7 @@ export class SettingsStorage {
   isTvModeEnabled(): boolean {
     const isTv =
       typeof navigator !== "undefined" &&
-      (navigator.userAgent.toLowerCase().includes("android") ||
+      ((isTauriRuntime() && navigator.userAgent.toLowerCase().includes("android")) ||
         navigator.userAgent.toLowerCase().includes("tv") ||
         navigator.userAgent.toLowerCase().includes("smarttv") ||
         navigator.userAgent.toLowerCase().includes("googletv") ||
@@ -542,6 +542,9 @@ export class SettingsStorage {
   getPlayerEngine(): PlayerEngineKind {
     if(import.meta.env.VITE_LEGACY_WEBOS)return 'libmedia';
     if (!isTauriRuntime()) return "libmedia";
+    // Android uses the shared in-app libmedia player by default. The explicit
+    // external-player preference is handled separately by the playback route.
+    if (navigator.userAgent.toLowerCase().includes("android")) return "libmedia";
     const saved = mainStorage.getString(SettingsKeys.PLAYER_ENGINE);
     if (saved === "libmedia") return "libmedia";
     return saved === "mpv" && this.isMpvEngineSupported() ? "mpv" : "builtin";

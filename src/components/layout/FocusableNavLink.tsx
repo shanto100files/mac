@@ -31,10 +31,7 @@ export const FocusableNavLink: React.FC<FocusableNavLinkProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const { isModalOpen } = useModalFocus();
   const isInModal = useIsInModal();
   const blockedByModal = isModalOpen && !isInModal;
@@ -85,7 +82,8 @@ export const FocusableNavLink: React.FC<FocusableNavLinkProps> = ({
       ref={ref as any}
       type="button"
       title={title}
-      className={cn(computedClassName, focused && "tv-focus")}
+      aria-current={isActive ? "page" : undefined}
+      className={cn(computedClassName, tvMode && focused && "tv-focus")}
       onClick={() => {
         if (typeof to === "string") {
           navigate(to);

@@ -101,8 +101,7 @@ export const PostCardItem = memo(function PostCardItem({
   focusKey: customFocusKey,
   onFocus: customOnFocus,
 }: PostCardItemProps) {
-  const isAndroid = navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const [imageFailed, setImageFailed] = useState(false);
   const [removeFocused, setRemoveFocused] = useState(false);
   const paletteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);

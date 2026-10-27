@@ -1,0 +1,215 @@
+/* Browser layouts only; installed desktop and TV wrappers keep their chrome. */
+.web-app {
+  --spacing-gutter: clamp(16px, 3vw, 24px);
+}
+
+.web-app .layout-root,
+.web-app .layout-main,
+.web-app .home-page,
+.web-app .search-page,
+.web-app .catalog-page {
+  min-width: 0;
+}
+
+.web-app .topbar .search-wrapper {
+  width: min(320px, 100%);
+  min-width: 0;
+  flex: 0 1 320px;
+}
+
+.web-app .topbar .search-container { height: 36px; }
+.web-app .topbar .search-input { height: 32px; }
+
+.web-app .topbar .topbar-actions {
+  display: block;
+  flex: 0 1 220px;
+}
+
+.web-app .topbar .topbar-actions:empty { display: none; }
+
+.web-app .provider-switcher-container {
+  width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .web-app .sidebar,
+  .web-app .sidebar:not(.collapsed),
+  .web-app .sidebar.collapsed {
+    width: 76px;
+    flex-basis: 76px;
+    padding-inline: 6px;
+  }
+
+  .web-app .sidebar .sidebar-brand { justify-content: center; }
+  .web-app .sidebar .sidebar-menu-toggle,
+  .web-app .sidebar .sidebar-brand-name { display: none; }
+  .web-app .sidebar .sidebar-logo { display: flex; }
+  .web-app .sidebar .sidebar-nav .nav-item {
+    min-height: 60px;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 2px;
+    text-align: center;
+  }
+  .web-app .sidebar .nav-label { font-size: 11px; }
+}
+
+@media (max-width: 760px) {
+  .web-app .layout-content { padding-inline: var(--spacing-gutter); }
+  .web-app .page-header { align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+  .web-app .page-header-actions { flex-wrap: wrap; max-width: 100%; }
+  .web-app .page-title { font-size: 25px; white-space: normal; overflow-wrap: anywhere; }
+  .web-app .settings-page,
+  .web-app .library-page { padding-inline: 0; }
+  .web-app .settings-row { min-width: 0; }
+  .web-app .settings-info p { overflow-wrap: anywhere; }
+  .web-app .settings-row > :not(.settings-info) { max-width: 100%; }
+  .web-app .theme-toggle-group,
+  .web-app .quality-options,
+  .web-app .color-preset-group { flex-wrap: wrap; }
+  .web-app .custom-select-container,
+  .web-app .custom-select-button { min-width: 0; max-width: 100%; }
+  .web-app .settings-row > .custom-select-container { width: 100%; }
+  .web-app .search-page-header-container { align-items: stretch; flex-wrap: wrap; }
+  .web-app .search-page-form-wrapper { min-width: 0; flex-basis: 100%; }
+  .web-app .search-page-form { min-width: 0; }
+  .web-app .search-results-meta { flex-wrap: wrap; gap: 8px; }
+  .web-app .search-grid,
+  .web-app .library-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
+  .web-app .catalog-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; }
+  .web-app .catalog-grid.catalog-grid-landscape { grid-template-columns: minmax(0, 1fr); }
+  .web-app .catalog-header { flex-wrap: wrap; margin-bottom: 24px; gap: 12px; }
+  .web-app .hero-container {
+    height: clamp(380px, 62svh, 560px);
+    margin-bottom: 48px;
+  }
+  .web-app .hero-content { width: 100%; padding: 24px 20px 48px; gap: 14px; }
+  .web-app .hero-title { font-size: 28px; line-height: 1.15; }
+  .web-app .hero-logo { max-width: min(280px, 100%); max-height: 100px; object-position: left; }
+  .web-app .hero-description { font-size: 14px; line-height: 1.5; -webkit-line-clamp: 2; }
+  .web-app .hero-actions { flex-wrap: wrap; gap: 8px; }
+  .web-app .hero-poster { display: none; }
+  .web-app .content-hero-logo { max-width: 100%; }
+  .web-app .content-hero-title-row { gap: 12px; }
+  .web-app .content-info-actions { flex-wrap: wrap; }
+  .web-app .content-info-action { min-height: 44px; }
+  .web-app .episode-media.has-image { width: 96px; height: 64px; flex-basis: 96px; }
+  .web-app .episode-play-area { gap: 10px; }
+  .web-app .content-detail-inner { padding-inline: 16px; }
+  .web-app .extensions-dialog-content { width: calc(100% - 24px); padding: 18px; max-height: 85dvh; }
+  .web-app .download-dialog-overlay { padding: 12px; }
+  .web-app .download-dialog-content { width: 100%; max-height: 85dvh; }
+  .web-app .download-dialog-header { padding: 18px; }
+}
+
+@media (max-width: 640px) {
+  /* The five existing destinations become a persistent touch navigation bar. */
+  .web-app .layout-root { padding-bottom: calc(68px + env(safe-area-inset-bottom, 0px)); }
+  .web-app .sidebar,
+  .web-app .sidebar:not(.collapsed),
+  .web-app .sidebar.collapsed {
+    position: fixed;
+    inset: auto 0 0;
+    width: 100%;
+    height: calc(68px + env(safe-area-inset-bottom, 0px));
+    padding: 4px max(6px, env(safe-area-inset-right, 0px)) env(safe-area-inset-bottom, 0px) max(6px, env(safe-area-inset-left, 0px));
+    border-right: 0;
+    border-top: 1px solid var(--outline-variant);
+    z-index: 110;
+  }
+  .web-app .sidebar .sidebar-brand { display: none; }
+  .web-app .sidebar .sidebar-nav { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); padding: 0; }
+  .web-app .sidebar .nav-group { display: contents; }
+  .web-app .sidebar .sidebar-nav .nav-item {
+    min-height: 56px;
+    min-width: 0;
+    justify-content: center;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 0;
+    text-align: center;
+  }
+  .web-app .sidebar .nav-label { width: 100%; font-size: 10px; line-height: 15px; text-overflow: ellipsis; }
+  .web-app .sidebar .nav-icon { width: 22px; flex-basis: 22px; }
+  .web-app .sidebar .nav-icon svg { width: 22px; height: 22px; }
+  .web-app .sidebar .nav-indicator { inset: 2px; }
+  .web-app .sidebar .nav-item.active::before { inset: auto auto 0 50%; width: 18px; height: 3px; transform: translateX(-50%); }
+  .web-app .sidebar .nav-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .web-app .topbar {
+    height: 60px;
+    flex: 0 0 60px;
+    margin-bottom: 0;
+    padding: 10px 16px;
+    gap: 8px;
+    background: var(--background);
+    border-bottom-color: var(--outline-variant);
+  }
+  .web-app .topbar .topbar-actions { display: block; flex: 0 1 140px; }
+  .web-app .topbar .search-wrapper { width: min(260px, 100%); flex-basis: 260px; }
+  .web-app .provider-switcher-button { gap: 6px; padding-inline: 8px; }
+  .web-app .provider-dropdown { width: min(280px, calc(100vw - 32px)); max-height: 60dvh; overflow-y: auto; }
+  .web-app .layout-content-padded { padding-top: 20px; }
+  .web-app .home-page > .empty-view { margin-top: 12vh; }
+  .web-app .empty-view { padding-inline: 8px; }
+  .web-app .content-back-button { top: 12px; }
+  .web-app .content-hero.is-portrait { padding-top: 24px; }
+  .web-app .content-hero-portrait-poster { width: 140px; }
+  .web-app .search-input,
+  .web-app .search-page-input,
+  .web-app input[type="text"],
+  .web-app input[type="url"],
+  .web-app input[type="password"] { font-size: 16px; }
+  .web-app .library-action-button { height: 40px; }
+  .web-app .source-visibility-option { padding-inline: 8px; }
+}
+
+/* Reflow all player actions instead of clipping them or removing features. */
+@media (max-width: 900px) {
+  .web-app .player-actions-row { padding-inline: 0; gap: 8px; flex-wrap: wrap; }
+  .web-app .player-actions-left,
+  .web-app .player-actions-right { min-width: 0; gap: 6px; }
+  .web-app .player-bottom-bar { padding: 0 max(12px, env(safe-area-inset-right, 0px)) max(12px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+  .web-app .player-top-bar { padding: 12px max(12px, env(safe-area-inset-right, 0px)) 12px max(12px, env(safe-area-inset-left, 0px)); }
+  .web-app .player-back-btn { flex: 0 0 40px; height: 40px; }
+  .web-app .timeline-track { min-height: 32px; touch-action: none; }
+  .web-app .action-btn { min-height: 44px; padding-inline: 8px; }
+  .web-app .player-episode-sidebar { width: min(400px, calc(100% - 12px)); }
+  .web-app .player-settings-panel { width: min(520px, calc(100vw - 24px)); max-height: 80dvh; }
+  .web-app .player-center-controls { gap: 24px; }
+}
+
+@media (max-width: 640px) {
+  .web-app .player-actions-row { flex-direction: column; align-items: stretch; }
+  .web-app .player-actions-left,
+  .web-app .player-actions-right { justify-content: space-between; width: 100%; }
+  .web-app .player-actions-right .server-name { max-width: 96px; }
+  .web-app .player-actions-right > .inline-menu-container:first-child { flex: 1 1 0; min-width: 0; }
+  .web-app .player-actions-right > .inline-menu-container:first-child .action-btn { max-width: 100%; }
+  .web-app .player-actions-right .action-btn-label { max-width: 96px; }
+  .web-app .chapter-action-label { max-width: 100px; }
+  .web-app .inline-menu,
+  .web-app .inline-menu.left,
+  .web-app .inline-menu.right,
+  .web-app .inline-menu.chapters-menu {
+    position: fixed;
+    left: 50%;
+    right: auto;
+    bottom: calc(128px + env(safe-area-inset-bottom, 0px));
+    width: min(420px, calc(100% - 24px));
+    min-width: 0;
+    max-height: min(55dvh, 420px);
+    transform: translateX(-50%);
+    animation: none;
+  }
+  .web-app .inline-menu-item { min-height: 44px; }
+}
+
+@media (max-height: 500px) and (max-width: 900px) {
+  .web-app .player-top-bar { padding-block: 6px; }
+  .web-app .player-bottom-bar { padding-bottom: max(6px, env(safe-area-inset-bottom, 0px)); gap: 2px; }
+  .web-app .inline-menu,
+  .web-app .inline-menu.left,
+  .web-app .inline-menu.right { max-height: 50dvh; }
+}

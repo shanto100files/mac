@@ -26,10 +26,7 @@ export function useDialogFocusBoundary({
   restoreFocusKey,
   autoFocusDelay = 30,
 }: UseDialogFocusBoundaryOptions) {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const { registerModal } = useModalFocus();
 
   // Register this modal with the global ModalFocusContext whenever isOpen is true

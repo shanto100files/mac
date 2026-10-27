@@ -29,10 +29,7 @@ export const FocusableInput: React.FC<FocusableInputProps> = ({
   onKeyDown,
   ...inputProps
 }) => {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   // Outside TV mode, show the ring only while keyboard or controller is in use.
   const showRing = useKeyboardNavActive() || tvMode;
   const { isModalOpen } = useModalFocus();

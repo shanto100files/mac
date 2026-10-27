@@ -28,10 +28,7 @@ export const FocusableButton: React.FC<FocusableButtonProps> = ({
   type: _type,
   ...rest 
 }) => {
-  const isAndroid =
-    typeof navigator !== 'undefined' &&
-    navigator.userAgent.toLowerCase().includes('android');
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const { isModalOpen } = useModalFocus();
   const isInModal = useIsInModal();
   const blockedByModal = isModalOpen && !isInModal;

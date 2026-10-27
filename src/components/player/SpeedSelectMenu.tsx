@@ -17,10 +17,7 @@ export const SpeedSelectMenu: React.FC<SpeedSelectMenuProps> = ({
   onPlaybackRateChange,
   onClose,
 }) => {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
 
   const { ref: menuRef, focusKey, focusSelf } = useFocusable({
     isFocusBoundary: true,

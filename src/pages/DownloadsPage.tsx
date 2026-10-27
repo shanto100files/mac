@@ -422,8 +422,7 @@ const DownloadedLibraryCard: React.FC<{
   onOpen: () => void;
   onDelete: () => void;
 }> = ({ group, onOpen, onDelete }) => {
-  const isAndroid = navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
 
   const cardFocusKey = `DOWNLOAD_GROUP_${group.showName.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
   const deleteFocusKey = `${cardFocusKey}_DELETE`;

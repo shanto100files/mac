@@ -34,10 +34,7 @@ export const MoreOptionsMenu: React.FC<MoreOptionsMenuProps> = ({
   onCopyLink,
   onClose,
 }) => {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
 
   const { ref: menuRef, focusKey, focusSelf } = useFocusable({
     isFocusBoundary: true,

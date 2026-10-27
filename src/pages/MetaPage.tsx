@@ -186,8 +186,7 @@ export const MetaPage: React.FC = () => {
     state.collections.length === 1 ? state.collections[0].id : undefined,
   );
   const [collectionPickerOpen, setCollectionPickerOpen] = useState(false);
-  const isAndroid = navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const canDownload = supportsMediaDownloads();
   const { ref: focusRef, focusKey } = useFocusable({ focusable: tvMode, trackChildren: true });
 

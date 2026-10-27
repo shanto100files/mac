@@ -20,7 +20,7 @@ interface TimelineScrubberProps {
   updateTimelinePreview: (e: MouseEvent | React.MouseEvent) => number | null;
   draggingTimelineRef: React.MutableRefObject<boolean>;
   trackRef: React.RefObject<HTMLDivElement | null>;
-  handleTrackMouseDown: (e: React.MouseEvent) => void;
+  handleTrackPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
   focusable?: boolean;
 }
 
@@ -39,13 +39,10 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
   updateTimelinePreview,
   draggingTimelineRef,
   trackRef,
-  handleTrackMouseDown,
+  handleTrackPointerDown,
   focusable,
 }) => {
-  const isAndroid =
-    typeof navigator !== "undefined" &&
-    navigator.userAgent.toLowerCase().includes("android");
-  const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
+  const tvMode = settingsStorage.isTvModeEnabled();
   const isControlsVisible = useControlsFocus();
   const canFocus =
     (focusable !== undefined ? focusable : true) && tvMode && isControlsVisible;
@@ -79,7 +76,8 @@ export const TimelineScrubber: React.FC<TimelineScrubberProps> = ({
       <div
         ref={trackRef}
         className="timeline-track"
-        onMouseDown={handleTrackMouseDown}
+        onPointerDown={handleTrackPointerDown}
+        style={{touchAction: "none"}}
         onMouseEnter={(event) => {
           onScrubbingChange?.(true);
           updateTimelinePreview(event);
