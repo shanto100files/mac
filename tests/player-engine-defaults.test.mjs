@@ -11,6 +11,7 @@ function engineFor(userAgent, native, saved) {
   const mocks={
     '@tauri-apps/api/core':{},
     '../../platform/host':{isTauriRuntime:()=>native},
+    '../../platform/deviceLayout':{},
     './StorageService':{mainStorage:{getString:()=>saved}},
   };
   runInNewContext(`(function(require,module,exports){${code}\n})`,{navigator:{userAgent}})(name=>{

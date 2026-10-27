@@ -1,4 +1,4 @@
-/* Browser layouts only; installed desktop and TV wrappers keep their chrome. */
+/* Browsers and Android handhelds; installed desktop and TV wrappers keep their chrome. */
 .web-app {
   --spacing-gutter: clamp(16px, 3vw, 24px);
 }

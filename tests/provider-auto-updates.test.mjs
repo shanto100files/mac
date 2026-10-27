@@ -33,7 +33,7 @@ function fixture(app) {
     return module.exports;
   }
   const settings=load('storage/SettingsStorage.ts',{
-    './StorageService':{mainStorage},'@tauri-apps/api/core':{},'../../platform/host':{},
+    './StorageService':{mainStorage},'@tauri-apps/api/core':{},'../../platform/host':{},'../../platform/deviceLayout':{},
     '../player/controlStyle':{},'../player/controlLayout':{},'../downloadLocation':{},
   });
   const settingsStorage=settings.settingsStorage;

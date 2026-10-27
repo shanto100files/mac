@@ -1,6 +1,9 @@
 package com.vega.desktop
 
 import android.content.Intent
+import android.app.UiModeManager
+import android.content.Context
+import android.content.res.Configuration
 import android.os.Bundle
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
@@ -49,6 +52,15 @@ class MainActivity : TauriActivity() {
   override fun onWebViewCreate(webView: WebView) {
     this.webView = webView
     webView.addJavascriptInterface(SourceIntentBridge(), "VegaSourceIntent")
+    webView.addJavascriptInterface(DeviceBridge(), "VegaDevice")
+  }
+
+  private inner class DeviceBridge {
+    @JavascriptInterface
+    fun isTelevision(): Boolean {
+      val uiMode = getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager
+      return uiMode?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION
+    }
   }
 
   private inner class SourceIntentBridge {

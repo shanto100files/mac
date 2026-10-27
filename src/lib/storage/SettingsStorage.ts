@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import {isTauriRuntime} from "../../platform/host";
+import {isTelevisionDevice} from "../../platform/deviceLayout";
 import { mainStorage } from "./StorageService";
 
 /**
@@ -147,14 +148,7 @@ export class SettingsStorage {
   }
 
   isTvModeEnabled(): boolean {
-    const isTv =
-      typeof navigator !== "undefined" &&
-      ((isTauriRuntime() && navigator.userAgent.toLowerCase().includes("android")) ||
-        navigator.userAgent.toLowerCase().includes("tv") ||
-        navigator.userAgent.toLowerCase().includes("smarttv") ||
-        navigator.userAgent.toLowerCase().includes("googletv") ||
-        navigator.userAgent.toLowerCase().includes("leanback") ||
-        import.meta.env.VITE_TV_MODE === "true");
+    const isTv = typeof navigator !== "undefined" && isTelevisionDevice();
     return mainStorage.getBool(SettingsKeys.TV_MODE_ENABLED, isTv);
   }
 
