@@ -50,6 +50,9 @@ export enum SettingsKeys {
   // Quality settings
   EXCLUDED_QUALITIES = "excludedQualities",
 
+  // Streams from every provider, not just the opened one
+  MERGE_PROVIDER_STREAMS = "mergeProviderStreams",
+
   // Download settings
   DOWNLOAD_LOCATION = "downloadLocation",
   DOWNLOAD_CONCURRENCY = "downloadConcurrency",
@@ -174,6 +177,15 @@ export class SettingsStorage {
 
   setShowContinueWatching(show: boolean): void {
     mainStorage.setBool(SettingsKeys.SHOW_CONTINUE_WATCHING, show);
+  }
+
+  /** Player and download lists also show files resolved by other providers. */
+  isMergeProviderStreamsEnabled(): boolean {
+    return mainStorage.getBool(SettingsKeys.MERGE_PROVIDER_STREAMS, true);
+  }
+
+  setMergeProviderStreamsEnabled(enabled: boolean): void {
+    mainStorage.setBool(SettingsKeys.MERGE_PROVIDER_STREAMS, enabled);
   }
 
   areDevtoolsShortcutsEnabled(): boolean {

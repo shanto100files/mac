@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import {isTauriRuntime} from "../../platform/host";
 
 import { providerManager } from "../services/ProviderManager";
+import { fetchAggregatedStreams, mergeAggregatedStreams } from "../site/aggregateStreams";
 import { settingsStorage } from "../storage";
 
 import { Stream } from "../providers/types";
@@ -24,6 +25,39 @@ interface UseStreamOptions {
 // create a new array on every render while the query is loading, which makes
 // every effect depending on `streamData` re-run and re-render endlessly.
 const EMPTY_STREAMS: Stream[] = [];
+
+const parseSeasonNumber = (label?: string): number => {
+  const text = String(label || "");
+  const match = text.match(/season\s*(\d+)/i) || text.match(/\bs(\d{1,2})\b/i);
+  return match ? Number(match[1]) || 1 : 1;
+};
+
+const parseEpisodeNumber = (episode: any, index: number): number => {
+  const text = String(episode?.title || "");
+  const match =
+    text.match(/\b(?:episode|ep)\s*[-.:#]?\s*(\d{1,4})\b/i) ||
+    text.match(/\bE(\d{1,4})\b/i);
+  return match ? Number(match[1]) || index + 1 : index + 1;
+};
+
+/* Local providers report "480" while the site reports "480p". */
+const qualityKey = (quality?: string | number): string =>
+  String(quality ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/p$/, "");
+
+/** The opened provider's files come first; the site's cross-provider list follows. */
+const mergeStreamLists = (base: Stream[], extra: Stream[]): Stream[] => {
+  if (!extra.length) return base;
+  const excluded = new Set(
+    (settingsStorage.getExcludedQualities() || []).map(qualityKey),
+  );
+  const allowed = excluded.size
+    ? extra.filter((stream) => !excluded.has(qualityKey(stream.quality)))
+    : extra;
+  return mergeAggregatedStreams(base, allowed);
+};
 
 const getSubtitleKey = (subs: any[]) =>
   subs.map((sub) => sub?.url || sub?.uri || "").join("|");
@@ -161,6 +195,7 @@ export const useStream = ({
     type: "",
   });
   const [externalSubs, setExternalSubs] = useState<any[]>([]);
+  const [aggregatedStreams, setAggregatedStreams] = useState<Stream[]>([]);
   const downloadedItem = getCompletedDownload(activeEpisode, routeParams);
   const localFilePath = activeEpisode?.localFile
     ? activeEpisode.link
@@ -264,13 +299,74 @@ export const useStream = ({
     refetchOnWindowFocus: false,
   });
 
-  // Update selected stream when data changes
-  useEffect(() => {
-    if (streamData && streamData.length > 0) {
-      setSelectedStream(streamData[0]);
-    }
-  }, [streamData]);
+  const mergedStreams = useMemo(
+    () => mergeStreamLists(streamData, aggregatedStreams),
+    [streamData, aggregatedStreams],
+  );
 
+  /* The site resolves this title on every other allowed provider in the
+     background, so playback still starts from the opened provider's first file
+     instead of waiting on a cross-provider fan-out. */
+  useEffect(() => {
+    setAggregatedStreams([]);
+    const remoteLink = activeEpisode?.localFile
+      ? activeEpisode.sourceLink || downloadedItem?.sourceLink
+      : activeEpisode?.link;
+    if (!enabled || !remoteLink || routeParams?.localContent) return;
+    const controller = new AbortController();
+    const publish = (streams: Stream[]) => {
+      if (!controller.signal.aborted) {
+        setAggregatedStreams((current) =>
+          mergeAggregatedStreams(current, streams),
+        );
+      }
+    };
+    fetchAggregatedStreams(
+      {
+        provider: routeParams?.providerValue || provider,
+        link: remoteLink,
+        title: routeParams?.primaryTitle,
+        type: routeParams?.type,
+        season: parseSeasonNumber(routeParams?.secondaryTitle),
+        episode: parseEpisodeNumber(activeEpisode, routeParams?.linkIndex || 0),
+        isDownload: false,
+        signal: controller.signal,
+      },
+      publish,
+    )
+      .then((streams) => {
+        if (!controller.signal.aborted && streams.length) {
+          setAggregatedStreams(streams);
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [
+    enabled,
+    activeEpisode?.link,
+    activeEpisode?.localFile,
+    activeEpisode?.sourceLink,
+    activeEpisode?.title,
+    downloadedItem?.sourceLink,
+    provider,
+    routeParams?.providerValue,
+    routeParams?.primaryTitle,
+    routeParams?.type,
+    routeParams?.secondaryTitle,
+    routeParams?.linkIndex,
+    routeParams?.localContent,
+  ]);
+
+  // Keep the user's server choice when the cross-provider list arrives.
+  useEffect(() => {
+    if (mergedStreams.length > 0) {
+      setSelectedStream((current) =>
+        current?.link && mergedStreams.some((item) => item.link === current.link)
+          ? current
+          : mergedStreams[0],
+      );
+    }
+  }, [mergedStreams]);
   // Extract downloaded and online external subtitles
   useEffect(() => {
     let isMounted = true;
@@ -278,8 +374,8 @@ export const useStream = ({
       const downloadedSubs = await getDownloadedSubtitles(activeEpisode, routeParams);
 
       const onlineSubs: any[] = [];
-      if (streamData && streamData.length > 0) {
-        streamData.forEach((track) => {
+      if (mergedStreams && mergedStreams.length > 0) {
+        mergedStreams.forEach((track) => {
           if (track?.subtitles?.length && track.subtitles.length > 0) {
             onlineSubs.push(...track.subtitles);
           }
@@ -313,7 +409,7 @@ export const useStream = ({
     return () => {
       isMounted = false;
     };
-  }, [streamData, downloadedItem]);
+  }, [mergedStreams, downloadedItem]);
 
   // Handle errors
   useEffect(() => {
@@ -325,10 +421,10 @@ export const useStream = ({
   }, [error]);
 
   const switchToNextStream = () => {
-    if (streamData && streamData.length > 0) {
-      const currentIndex = streamData.indexOf(selectedStream);
-      if (currentIndex < streamData.length - 1) {
-        setSelectedStream(streamData[currentIndex + 1]);
+    if (mergedStreams && mergedStreams.length > 0) {
+      const currentIndex = mergedStreams.indexOf(selectedStream);
+      if (currentIndex < mergedStreams.length - 1) {
+        setSelectedStream(mergedStreams[currentIndex + 1]);
         console.warn("Network error: No network connection available");
         return true;
       }
@@ -337,7 +433,7 @@ export const useStream = ({
   };
 
   return {
-    streamData,
+    streamData: mergedStreams,
     selectedStream,
     setSelectedStream,
     externalSubs,

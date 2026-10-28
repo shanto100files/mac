@@ -33,6 +33,9 @@ export const PreferencesSettings: React.FC = () => {
   const [autoInstallUpdates, setAutoInstallUpdates] = useState<boolean>(true);
   const [autoCheckUpdates, setAutoCheckUpdates] = useState<boolean>(true);
   const [providerAutoUpdates, setProviderAutoUpdates] = useState(() => settingsStorage.isProviderAutoUpdateEnabled());
+  const [mergeProviderStreams, setMergeProviderStreams] = useState<boolean>(() =>
+    settingsStorage.isMergeProviderStreamsEnabled(),
+  );
   const [tvModeEnabled, setTvModeEnabled] = useState<boolean>(false);
   const [devtoolsShortcutsEnabled, setDevtoolsShortcutsEnabled] =
     useState<boolean>(false);
@@ -112,6 +115,12 @@ export const PreferencesSettings: React.FC = () => {
     const nextState = !autoCheckUpdates;
     setAutoCheckUpdates(nextState);
     settingsStorage.setAutoCheckUpdateEnabled(nextState);
+  };
+
+  const handleToggleMergeProviderStreams = () => {
+    const nextState = !mergeProviderStreams;
+    setMergeProviderStreams(nextState);
+    settingsStorage.setMergeProviderStreamsEnabled(nextState);
   };
 
   const handleToggleTvMode = () => {
@@ -467,6 +476,25 @@ export const PreferencesSettings: React.FC = () => {
 
       {/* Anti-DPI & Proxy Section (WARP & ByeDPI) */}
       <ProxyPreferenceSection />
+
+      <div className="settings-divider" />
+
+      {/* Cross-provider streams */}
+      <div className="settings-row">
+        <div className="settings-info">
+          <h3 className="label-lg">Merge Streams From All Providers</h3>
+          <p className="body-md text-muted">
+            Show files the site resolves on other providers next to the opened
+            provider's servers. The opened provider always stays first.
+          </p>
+        </div>
+        <Switch
+          checked={mergeProviderStreams}
+          onCheckedChange={() => handleToggleMergeProviderStreams()}
+          aria-label="Merge streams from all providers"
+        />
+      </div>
+
 
       <div className="settings-divider" />
 

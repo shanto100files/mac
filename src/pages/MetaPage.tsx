@@ -28,6 +28,10 @@ import { useEpisodes } from "../lib/hooks/useEpisodes";
 import { useImageIsPortrait } from "../lib/hooks/useImageIsPortrait";
 import type { EpisodeLink, Link, Stream, SkipInterval } from "../lib/providers/types";
 import { providerManager } from "../lib/services/ProviderManager";
+import {
+  fetchAggregatedStreams,
+  mergeAggregatedStreams,
+} from "../lib/site/aggregateStreams";
 import { cacheStorage, type WatchHistoryItem } from "../lib/storage";
 import { settingsStorage } from "../lib/storage/SettingsStorage";
 import useContentStore from "../lib/zustand/contentStore";
@@ -199,6 +203,7 @@ export const MetaPage: React.FC = () => {
   const [providerSeason, setActiveSeason] = useState<Link | null>(null);
   const activeSeason = useMemo(() => providerSeason ? {...providerSeason, directLinks: providerSeason.directLinks?.map(episode => applyProviderEpisodeMetadata(episode, providerSeason.title, manualMetadata))} : null, [providerSeason, manualMetadata]);
   const [dialogStreams, setDialogStreams] = useState<Stream[]>([]);
+  const dialogRequestRef = useRef<string>("");
   const [dialogEpisodeTitle, setDialogEpisodeTitle] = useState("");
   const [dialogContext, setDialogContext] = useState<DialogContext | null>(null);
   const [dialogError, setDialogError] = useState<string | null>(null);
@@ -502,6 +507,7 @@ export const MetaPage: React.FC = () => {
 
     setIsDialogLoading(true);
     setExtractingId(id);
+    dialogRequestRef.current = id;
     try {
       const streams = await providerManager.getStream({
         link: episode.link,
@@ -512,6 +518,28 @@ export const MetaPage: React.FC = () => {
       });
       const validStreams = streams || [];
       setDialogStreams(validStreams);
+      /* The opened provider's list paints first; files the site resolved on
+         other providers are appended when they arrive so quick download never
+         waits on the cross-provider fan-out. */
+      const publishExtra = (extra: Stream[]) => {
+        if (!extra.length || dialogRequestRef.current !== id) return;
+        setDialogStreams((current) => mergeAggregatedStreams(current, extra));
+        setDialogError(null);
+      };
+      fetchAggregatedStreams(
+        {
+          provider: activeProviderValue,
+          link: episode.link,
+          title,
+          type,
+          season: Number(String(groupTitle).match(/(\d+)/)?.[1]) || 1,
+          episode: index + 1,
+          isDownload: true,
+        },
+        publishExtra,
+      )
+        .then(publishExtra)
+        .catch(() => {});
       if (validStreams.length === 0) {
         setDialogError("No downloadable streams found.");
         if (isQuickDownload) {
@@ -519,6 +547,7 @@ export const MetaPage: React.FC = () => {
         }
       } else if (isQuickDownload) {
         await executeQuickDownload(newContext, validStreams[0]);
+        dialogRequestRef.current = "";
         setIsDownloadDialogOpen(false);
         setDialogStreams([]);
         setDialogContext(null);
