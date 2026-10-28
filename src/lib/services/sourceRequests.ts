@@ -1,5 +1,7 @@
 import { getSourceAuthHeaders } from "../storage/sourceTokenStorage";
 import {getPlatformHost, isTauriRuntime} from "../../platform/host";
+import { isSiteRemote } from "../siteConfig";
+import { authHeaders } from "../site/accountStore";
 
 /** User-added development servers may use HTTP; remote executable code needs TLS. */
 export function validateSourceTransport(value: string): void {
@@ -13,8 +15,11 @@ export const getSourceRequestHeaders = (
   author: string | undefined,
   url: string,
 ): Record<string, string> => ({
-  ...(isTauriRuntime() || getPlatformHost()?.capabilities.restrictedHeaders ? {"User-Agent": "VegaDesktop"} : {}),
+  ...(isTauriRuntime() || getPlatformHost()?.capabilities.restrictedHeaders ? {"User-Agent": "CinepixDesktop"} : {}),
   ...getSourceAuthHeaders(author, url),
+  // Our own source answers per-account provider lists and 18+ gating, so the
+  // signed-in session has to travel with the manifest and module requests.
+  ...(isSiteRemote(url) ? authHeaders() : {}),
 });
 
 export const isRateLimitError = (error: unknown): boolean => {

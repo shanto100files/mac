@@ -264,7 +264,7 @@ export const useMpvPlayer = (opts?: UseMpvPlayerOptions) => {
     } catch (err) {
       const originalError = err instanceof Error ? err.message : String(err);
       setInitializationError(
-        `${originalError}\n\nThe mpv player could not start. Switch to the built-in player in Settings > Player, or reinstall Vega to restore the mpv libraries.`,
+        `${originalError}\n\nThe mpv player could not start. Switch to the built-in player in Settings > Player, or reinstall Cinepix to restore the mpv libraries.`,
       );
       return;
     }

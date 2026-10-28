@@ -183,7 +183,7 @@ export const PlayerSettings: React.FC = () => {
             <h3 className="label-lg">External Player</h3>
             <p className="body-md text-muted">
               Show Android&apos;s app chooser for network streams instead of
-              playing them inside Vega.
+              playing them inside Cinepix.
             </p>
           </div>
           <Switch
@@ -198,7 +198,7 @@ export const PlayerSettings: React.FC = () => {
             <div className="settings-info">
               <h3 className="label-lg">VLC Player</h3>
               <p className="body-md text-muted">
-                Open the selected server directly in VLC instead of Vega&apos;s
+                Open the selected server directly in VLC instead of Cinepix&apos;s
                 player.
               </p>
             </div>

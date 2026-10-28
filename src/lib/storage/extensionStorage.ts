@@ -1,5 +1,6 @@
 import {mainStorage} from './StorageService';
 import {sourceTokenStorage} from './sourceTokenStorage';
+import {LOCK_PROVIDER_SOURCE, PROVIDER_SOURCE} from '../siteConfig';
 import type {ProviderIntegrity} from '../services/providerIntegrity';
 
 /**
@@ -112,6 +113,10 @@ export class ExtensionStorage {
    * Add provider sources
    */
   addProviderSources(author: string, url: string, manifestUrl?: string): void {
+    // With the catalog pinned, a locally added source could only ever shadow it.
+    if (LOCK_PROVIDER_SOURCE && author.trim() !== PROVIDER_SOURCE.author) {
+      return;
+    }
     const normalizedAuthor = author.trim();
     const normalizedUrl = this.normalizeUrl(url);
     if (!normalizedAuthor || !normalizedUrl) {
@@ -154,6 +159,9 @@ export class ExtensionStorage {
    * Get provider sources
    */
   getProviderSource(getDefault = true): ProviderSource | undefined {
+    if (LOCK_PROVIDER_SOURCE) {
+      return { ...PROVIDER_SOURCE, isDefault: true };
+    }
     const sources =
       mainStorage.getArray<ProviderSource>(ExtensionKeys.PROVIDER_SOURCES) ||
       [];
@@ -169,6 +177,9 @@ export class ExtensionStorage {
    * Get all provider sources
    */
   getProviderSources(): ProviderSource[] {
+    if (LOCK_PROVIDER_SOURCE) {
+      return [{ ...PROVIDER_SOURCE, isDefault: true }];
+    }
     return (
       mainStorage.getArray<ProviderSource>(ExtensionKeys.PROVIDER_SOURCES) || []
     );
@@ -178,6 +189,9 @@ export class ExtensionStorage {
    * Remove Provider source
    */
   removeProviderSource(author: string): void {
+    if (LOCK_PROVIDER_SOURCE) {
+      return;
+    }
     const sources =
       mainStorage.getArray<ProviderSource>(ExtensionKeys.PROVIDER_SOURCES) ||
       [];
@@ -202,6 +216,9 @@ export class ExtensionStorage {
    * Set default provider source
    */
   setDefaultProviderSource(author: string): void {
+    if (LOCK_PROVIDER_SOURCE) {
+      return;
+    }
     const sources =
       mainStorage.getArray<ProviderSource>(ExtensionKeys.PROVIDER_SOURCES) ||
       [];

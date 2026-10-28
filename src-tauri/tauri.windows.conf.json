@@ -1,9 +1,8 @@
 {
-  "identifier": "Zenda-X.VegaApp",
   "app": {
     "windows": [
       {
-        "title": "Vega",
+        "title": "Cinepix",
         "width": 800,
         "height": 600,
         "transparent": true,

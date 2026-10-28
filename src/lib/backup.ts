@@ -196,13 +196,13 @@ export const parseBackup = (text: string): VegaBackup => {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error('This file is not a Vega backup');
+    throw new Error('This file is not a Cinepix backup');
   }
   if (data?.app !== 'vega' || typeof data.version !== 'number') {
-    throw new Error('This file is not a Vega backup');
+    throw new Error('This file is not a Cinepix backup');
   }
   if (data.version > BACKUP_VERSION) {
-    throw new Error('This backup was made by a newer version of Vega');
+    throw new Error('This backup was made by a newer version of Cinepix');
   }
   const {settings, providers} = data;
   if (
@@ -268,7 +268,7 @@ export const restoreBackup = (backup: VegaBackup): void => {
 export const exportBackup = async (): Promise<boolean> => {
   const {save} = await import('@tauri-apps/plugin-dialog');
   const {writeTextFile} = await import('@tauri-apps/plugin-fs');
-  const path = await save({defaultPath: `vega-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{name: 'Vega backup', extensions: ['json']}]});
+  const path = await save({defaultPath: `cinepix-backup-${new Date().toISOString().slice(0, 10)}.json`, filters: [{name: 'Cinepix backup', extensions: ['json']}]});
   if (!path) return false;
   await writeTextFile(path, JSON.stringify(createBackup(), null, 2));
   return true;
@@ -277,7 +277,7 @@ export const exportBackup = async (): Promise<boolean> => {
 export const pickBackup = async (): Promise<VegaBackup | undefined> => {
   const {open} = await import('@tauri-apps/plugin-dialog');
   const {readTextFile} = await import('@tauri-apps/plugin-fs');
-  const path = await open({multiple: false, filters: [{name: 'Vega backup', extensions: ['json']}]});
+  const path = await open({multiple: false, filters: [{name: 'Cinepix backup', extensions: ['json']}]});
   if (!path) return undefined;
   return parseBackup(await readTextFile(path));
 };

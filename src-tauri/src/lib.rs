@@ -731,8 +731,8 @@ pub fn run() {
             }
             app_log::record(
                 app_log::Level::Info,
-                "Vega",
-                &format!("Started Vega {}", app.package_info().version),
+                "Cinepix",
+                &format!("Started Cinepix {}", app.package_info().version),
             );
             process_guard::init_process_guard();
             for (tool, result) in [
@@ -749,13 +749,13 @@ pub fn run() {
                 }
             }
 
-            // Installers register vega:// on Windows and Linux. This also
+            // Installers register cinepix:// on Windows and Linux. This also
             // covers dev runs and portable copies. macOS uses Info.plist.
             #[cfg(any(target_os = "windows", target_os = "linux"))]
             {
                 use tauri_plugin_deep_link::DeepLinkExt;
                 if let Err(e) = app.deep_link().register_all() {
-                    vlog_warn!("[deep_link] Failed to register vega:// scheme: {}", e);
+                    vlog_warn!("[deep_link] Failed to register cinepix:// scheme: {}", e);
                 }
             }
 

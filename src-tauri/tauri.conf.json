@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Vega",
-  "version": "2.3.0",
-  "identifier": "com.vega.desktop",
+  "productName": "Cinepix",
+  "version": "1.0.0",
+  "identifier": "com.cinepix.top",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Vega",
+        "title": "Cinepix",
         "width": 800,
         "height": 600,
         "decorations": true
@@ -63,14 +63,14 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["vega"]
+        "schemes": ["cinepix"]
       }
     },
     "updater": {
       "endpoints": [
-        "https://github.com/vega-org/vega-desktop/releases/latest/download/latest.json"
+        "https://bdix.cinepix.top/api/app/desktop/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDZCNEQxMTZDNUI4OTg1RjAKUldUd2hZbGJiQkZOYTYxY0R4VW5ydHdzSlZaZkNPeGx5RTVhR0tZTGxIR1NmYWM4UnRjd2JySlMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQyQzhEN0QxODgxQTU0RUEKUldUcVZCcUkwZGZJUXBNcjVtN3pOS1NmV3lySndSeUVQSnhFNm10WG4reU5MbzQyOStzRmx5YVoK",
       "windows": {
         "installMode": "passive"
       }

@@ -77,7 +77,7 @@ export const PreferencesSettings: React.FC = () => {
         setDownloadLocation(selected);
         settingsStorage.setDownloadLocation(selected);
         syncFromSharedFolder().catch((err) =>
-          console.warn("[VegaSync] Folder change sync failed:", err),
+          console.warn("[CinepixSync] Folder change sync failed:", err),
         );
       }
     } catch (err) {
@@ -89,7 +89,7 @@ export const PreferencesSettings: React.FC = () => {
     setDownloadLocation("vega");
     settingsStorage.resetDownloadLocation();
     syncFromSharedFolder().catch((err) =>
-      console.warn("[VegaSync] Folder reset sync failed:", err),
+      console.warn("[CinepixSync] Folder reset sync failed:", err),
     );
   };
 
@@ -272,7 +272,7 @@ export const PreferencesSettings: React.FC = () => {
         <div className="settings-info">
           <h3 className="label-lg">Auto Install App Updates</h3>
           <p className="body-md text-muted">
-            Automatically download and install new versions of Vega
+            Automatically download and install new versions of Cinepix
           </p>
         </div>
         <Switch

@@ -1,4 +1,6 @@
 
+import { DOWNLOAD_PAGE_URL, SITE_ORIGIN } from './siteConfig';
+
 export const FLAGS = {
   GLOBAL: 'https://utfs.io/f/ImOWJajUmXfyRKHTpylsELpB6QlYA4OdG9Jfr3hagoCN5Mzt',
   INDIA: 'https://utfs.io/f/ImOWJajUmXfyYCEwdELCDZIMxNG5H27Bouwvb4fyVJrdqj3X',
@@ -11,7 +13,7 @@ export const downloadFolder = defaultDownloadFolder;
 
 export const themes: { name: string; color: string }[] = [
   {
-    name: 'Vega',
+    name: 'Cinepix',
     color: '#FF6347',
   },
   {
@@ -49,7 +51,6 @@ export const themes: { name: string; color: string }[] = [
 ];
 
 export const socialLinks = {
-  github: 'https://github.com/vega-org/vega-desktop',
-  discord: 'https://discord.gg/cr42m6maWy',
-  sponsor: 'https://github.com/sponsors/Zenda-Cross',
+  site: SITE_ORIGIN,
+  download: DOWNLOAD_PAGE_URL,
 };

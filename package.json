@@ -30,7 +30,8 @@
     "test:webos:compat": "npm run build:webos && node --test tests/webos-compat-browser.test.mjs",
     "test:tv:browser": "npm run build:webos && npm run build:amazon-vega && cargo build --locked --manifest-path tv/native-host/Cargo.toml && playwright test --config playwright.tv.config.mjs",
     "build:webos:legacy": "node scripts/build-tv.mjs webos-legacy",
-    "package:webos:legacy": "node scripts/build-tv.mjs webos-legacy --package"
+    "package:webos:legacy": "node scripts/build-tv.mjs webos-legacy --package",
+    "test:site": "node --test tests/site-library-sync.test.mjs"
   },
   "dependencies": {
     "@jitl/quickjs-singlefile-browser-release-sync": "0.32.0",

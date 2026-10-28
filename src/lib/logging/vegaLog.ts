@@ -94,7 +94,7 @@ export const exportLogs = async (extraHeader?: string): Promise<boolean> => {
   const { save } = await import("@tauri-apps/plugin-dialog");
   const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-");
   const path = await save({
-    title: "Export Vega logs",
+    title: "Export Cinepix logs",
     defaultPath: `vega-logs-${stamp}.txt`,
     filters: [{ name: "Text", extensions: ["txt"] }],
   });

@@ -123,9 +123,9 @@ export const Sidebar: React.FC = () => {
           >
             <Menu size={20} />
           </FocusableButton>
-          <div className="sidebar-logo" aria-label="Vega" data-tauri-drag-region>
+          <div className="sidebar-logo" aria-label="Cinepix" data-tauri-drag-region>
             <span className="sidebar-brand-icon" aria-hidden="true" data-tauri-drag-region />
-            <span className="sidebar-brand-name" data-tauri-drag-region>Vega</span>
+            <span className="sidebar-brand-name" data-tauri-drag-region>Cinepix</span>
           </div>
         </div>
 

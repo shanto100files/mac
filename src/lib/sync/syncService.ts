@@ -45,7 +45,7 @@ let previousHistory: WatchHistoryItem[] = [];
 let previousWatchList: WatchListItem[] = [];
 let previousCollections: LibraryCollection[] = [];
 
-const getDeviceId = () => {
+export const getDeviceId = () => {
   const existing = mainStorage.getString(DEVICE_ID_KEY);
   if (existing) {
     return existing;
@@ -186,7 +186,7 @@ const schedulePublish = () => {
   publishTimer = setTimeout(() => {
     publishTimer = undefined;
     publishSyncManifest().catch((error) =>
-      console.warn("[VegaSync] Failed to publish manifest:", error),
+      console.warn("[CinepixSync] Failed to publish manifest:", error),
     );
   }, PUBLISH_DELAY_MS);
 };

@@ -291,7 +291,7 @@ export const PlayerPage: React.FC = () => {
     let mounted = true;
     if (state?.localContent) { setSyncReady(true); return; }
     syncFromSharedFolder()
-      .catch((error) => console.warn("[VegaSync] Player sync failed:", error))
+      .catch((error) => console.warn("[CinepixSync] Player sync failed:", error))
       .finally(() => {
         if (mounted) setSyncReady(true);
       });
@@ -607,7 +607,7 @@ const TvPlayer: React.FC<any> = ({
                 {isAndroid
                   ? useExternalPlayer
                     ? "Open in external player"
-                    : "Play in Vega"
+                    : "Play in Cinepix"
                   : "Open in VLC"}
               </span>
               <h1>{state.primaryTitle}</h1>
@@ -622,7 +622,7 @@ const TvPlayer: React.FC<any> = ({
                 {isAndroid && useExternalPlayer
                   ? "Opening app chooserâ€¦"
                   : isAndroid
-                    ? "Opening Vega playerâ€¦"
+                    ? "Opening Cinepix playerâ€¦"
                     : "Opening VLCâ€¦"}
               </span>
             </div>
@@ -1269,7 +1269,7 @@ const DesktopPlayer: React.FC<any> = ({
       state.type === "series"
         ? activeEpisode?.title || state.primaryTitle
         : state.primaryTitle,
-    artist: state.type === "series" ? state.primaryTitle : "Vega",
+    artist: state.type === "series" ? state.primaryTitle : "Cinepix",
     album: state.secondaryTitle,
     artwork: mediaArtwork,
     isPaused: mpv.isPaused,

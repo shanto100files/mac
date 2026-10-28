@@ -1,7 +1,7 @@
 import React from "react";
 import {isTauriRuntime} from "../platform/host";
 import useThemeStore from "../lib/zustand/themeStore";
-import { themes } from "../lib/constants";
+import { socialLinks, themes } from "../lib/constants";
 import {
   LuMonitor as Monitor,
   LuCheck as Check,
@@ -9,11 +9,13 @@ import {
   LuCaptions as Captions,
   LuSlidersHorizontal as Sliders,
   LuInfo as Info,
+  LuUser as User,
 } from "react-icons/lu";
 import { PlayerSettings } from "../components/settings/PlayerSettings";
 import { SubtitleSettings } from "../components/settings/SubtitleSettings";
 import { PreferencesSettings } from "../components/settings/PreferencesSettings";
-import { GitHubStarButton } from "../components/settings/GitHubStarButton";
+import { AccountSettings } from "../components/settings/AccountSettings";
+import { openExternalUrl } from "../platform/externalLinks";
 import { checkAppUpdates } from "../lib/hooks/useAppUpdater";
 import { FocusableButton } from "../components/layout/FocusableButton";
 import { Switch } from "../components/ui/switch";
@@ -64,7 +66,7 @@ export const SettingsPage: React.FC = () => {
         const backup = await pickBackup();
         if (!backup) return;
         const {ask} = await import("@tauri-apps/plugin-dialog");
-        if (!await ask("This replaces your settings and installed providers, and your library if included. Vega will reload after restoring.", {title: "Restore backup?", kind: "warning"})) return;
+        if (!await ask("This replaces your settings and installed providers, and your library if included. Cinepix will reload after restoring.", {title: "Restore backup?", kind: "warning"})) return;
         restoreBackup(backup);
         window.location.reload();
       }
@@ -103,6 +105,19 @@ export const SettingsPage: React.FC = () => {
       </header>
 
       <div className="settings-content">
+        {/* Account Group */}
+        <section className="settings-group">
+          <h2
+            className="title-md flex items-center gap-2"
+            style={{ marginBottom: "8px" }}
+          >
+            <User size={20} /> Account
+          </h2>
+          <div className="settings-card">
+            <AccountSettings />
+          </div>
+        </section>
+
         {/* Appearance Group */}
         <section className="settings-group">
           <h2
@@ -248,7 +263,7 @@ export const SettingsPage: React.FC = () => {
           <div className="settings-card">
             <div className="settings-row">
               <div className="settings-info">
-                <h3 className="label-lg">{isTauriRuntime() ? "Vega Desktop" : "Vega"}</h3>
+                <h3 className="label-lg">{isTauriRuntime() ? "Cinepix for Desktop" : "Cinepix"}</h3>
                 <p className="body-md text-muted">{appVersion}</p>
                 {isTauriRuntime() && <FocusableButton
                   className="theme-toggle-btn active"
@@ -309,8 +324,25 @@ export const SettingsPage: React.FC = () => {
             </div>
             <div className="settings-divider" />
             </>}
-            <div className="github-star-row">
-              <GitHubStarButton />
+            <div className="settings-row">
+              <div className="settings-info">
+                <h3 className="label-lg">Cinepix</h3>
+                <p className="body-md text-muted">
+                  Providers, 18+ access and app updates are served from the site.
+                </p>
+              </div>
+              <FocusableButton
+                className="theme-toggle-btn active"
+                onClick={() => void openExternalUrl(socialLinks.site)}
+              >
+                Website
+              </FocusableButton>
+              <FocusableButton
+                className="theme-toggle-btn"
+                onClick={() => void openExternalUrl(socialLinks.download)}
+              >
+                Get the app
+              </FocusableButton>
             </div>
           </div>
         </section>

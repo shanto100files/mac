@@ -70,7 +70,7 @@ export const DownloadsPage = () => {
 
   useEffect(() => {
     syncFromSharedFolder().catch((err) =>
-      console.warn("[VegaSync] Downloads page sync failed:", err),
+      console.warn("[CinepixSync] Downloads page sync failed:", err),
     );
   }, []);
 

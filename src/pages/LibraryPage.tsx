@@ -48,7 +48,7 @@ export const LibraryPage: React.FC = () => {
 
   useEffect(() => {
     syncFromSharedFolder().catch((err) =>
-      console.warn("[VegaSync] Library page sync failed:", err),
+      console.warn("[CinepixSync] Library page sync failed:", err),
     );
   }, []);
 

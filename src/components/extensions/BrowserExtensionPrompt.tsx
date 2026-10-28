@@ -45,14 +45,14 @@ export function BrowserExtensionPrompt({open, onOpenChange}: {open:boolean; onOp
       <DialogFocusProvider>
         <Dialog.Content ref={ref as any} className="extensions-dialog-content"
           onOpenAutoFocus={event=>event.preventDefault()}>
-          <Dialog.Title>Install the Vega extension</Dialog.Title>
-          <Dialog.Description>To add providers in the web app, install the Vega extension. It connects providers and enables browser playback.</Dialog.Description>
-          <p style={{marginTop:16, lineHeight:1.6}}>After installing, open the extension and choose <strong>Allow all websites</strong>, then reload Vega.</p>
+          <Dialog.Title>Install the browser extension</Dialog.Title>
+          <Dialog.Description>To add providers in the web app, install the browser extension. It connects providers and enables browser playback.</Dialog.Description>
+          <p style={{marginTop:16, lineHeight:1.6}}>After installing, open the extension and choose <strong>Allow all websites</strong>, then reload the app.</p>
           <div className="extensions-dialog-actions" style={{flexWrap:'wrap'}}>
             <FocusableButton focusKey="BROWSER_EXTENSION_CANCEL" className="dialog-text-button"
               onClick={()=>onOpenChange(false)}>Not now</FocusableButton>
             <FocusableButton focusKey="BROWSER_EXTENSION_RELOAD" className="dialog-text-button"
-              onClick={()=>window.location.reload()}>Reload Vega</FocusableButton>
+              onClick={()=>window.location.reload()}>Reload the app</FocusableButton>
             <FocusableButton focusKey="BROWSER_EXTENSION_INSTALL" className="dialog-primary-button"
               onClick={()=>window.open(storeUrl, '_blank', 'noopener,noreferrer')}>Install extension</FocusableButton>
           </div>

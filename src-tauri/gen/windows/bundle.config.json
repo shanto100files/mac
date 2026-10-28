@@ -1,6 +1,6 @@
 {
   "publisher": "CN=CFB127B2-E8CE-4785-99C2-9536E662A4DE",
-  "publisherDisplayName": "Zenda-X",
+  "publisherDisplayName": "Cinepix.Top",
   "capabilities": {
     "general": [
       "internetClient"
@@ -11,8 +11,8 @@
     "fileAssociations": [],
     "protocolHandlers": [
       {
-        "name": "vega",
-        "displayName": "Vega"
+        "name": "cinepix",
+        "displayName": "Cinepix"
       }
     ]
   },

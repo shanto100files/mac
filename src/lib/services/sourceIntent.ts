@@ -6,7 +6,7 @@ import {isTauriRuntime} from '../../platform/host';
 //   optional "token" extra (GitHub token for a private repo). MainActivity.kt
 //   exposes it through window.VegaSourceIntent and fires "vega-add-source"
 //   when a new intent arrives while the app is open.
-// - Windows, macOS, Linux: vega://add-source?url=<source>&token=<token>
+// - Windows, macOS, Linux: cinepix://add-source?url=<source>&token=<token>
 //   through the deep-link plugin. A second launch hands the link to the
 //   running app (single-instance plugin).
 
@@ -54,9 +54,9 @@ export const parseSourceLink = (link: string): SourceIntentPayload | null => {
   } catch {
     return null;
   }
-  // Windows may add a trailing slash: vega://add-source/?url=...
+  // Windows may add a trailing slash: cinepix://add-source/?url=...
   const target = (parsed.host + parsed.pathname).replace(/\/+$/, '');
-  if (parsed.protocol !== 'vega:' || target !== 'add-source') {
+  if (parsed.protocol !== 'cinepix:' || target !== 'add-source') {
     return null;
   }
   const url = parsed.searchParams.get('url')?.trim();

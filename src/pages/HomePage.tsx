@@ -130,7 +130,7 @@ export const HomePage: React.FC = () => {
       <div className="home-page" style={{paddingTop: 80}}>
         {showContinueWatching && continueWatchingPosts.length > 0 && <ContentSlider title="Continue Watching" posts={continueWatchingPosts} onRemove={removeHistoryPost} />}
       <div className="empty-state">
-        <h2 className="headline-lg">Welcome to Vega</h2>
+        <h2 className="headline-lg">Welcome to Cinepix</h2>
         <p className="body-lg text-muted">
           Add a provider source in Extensions, then install a provider to get started.
         </p>

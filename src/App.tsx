@@ -42,6 +42,9 @@ import {
   publishSyncManifest,
   syncFromSharedFolder,
 } from "./lib/sync/syncService";
+import { initializeSiteSync, syncLibrary } from "./lib/site/librarySync";
+import { ACCOUNT_CHANGE_EVENT } from "./lib/site/accountStore";
+import { extensionManager } from "./lib/services/ExtensionManager";
 
 import { applyThemeTokens } from "./lib/theme";
 import { ToastContainer } from "./components/ui/ToastContainer";
@@ -116,16 +119,28 @@ export default function App() {
     settingsStorage.syncStreamDoh();
     syncProxySettings();
     initializeSyncService().catch((error) =>
-      console.warn("[VegaSync] Startup sync failed:", error),
+      console.warn("[CinepixSync] Startup sync failed:", error),
     );
+    initializeSiteSync();
+    // The provider list and 18+ gating are decided per account, so signing in,
+    // out or switching profile has to re-read the source manifest.
+    const handleAccountChange = () => {
+      extensionManager.fetchManifest(undefined, true).catch((error) =>
+        console.warn("[Cinepix] Provider refresh failed:", error),
+      );
+    };
+    window.addEventListener(ACCOUNT_CHANGE_EVENT, handleAccountChange);
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
         syncFromSharedFolder().catch((error) =>
-          console.warn("[VegaSync] Foreground sync failed:", error),
+          console.warn("[CinepixSync] Foreground sync failed:", error),
+        );
+        syncLibrary().catch((error) =>
+          console.warn("[Cinepix] Account sync failed:", error),
         );
       } else {
         publishSyncManifest().catch((error) =>
-          console.warn("[VegaSync] Background publish failed:", error),
+          console.warn("[CinepixSync] Background publish failed:", error),
         );
       }
     };
@@ -133,7 +148,7 @@ export default function App() {
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         syncFromSharedFolder().catch((error) =>
-          console.warn("[VegaSync] Periodic sync failed:", error),
+          console.warn("[CinepixSync] Periodic sync failed:", error),
         );
       }
     }, 30000);
@@ -143,6 +158,7 @@ export default function App() {
     window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
+      window.removeEventListener(ACCOUNT_CHANGE_EVENT, handleAccountChange);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.clearInterval(interval);
